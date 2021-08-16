@@ -1,0 +1,6 @@
+body {
+    margin: 0;
+    position: fixed;
+    background-color: black;
+    overscroll-behavior-y: none;
+}
