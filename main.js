@@ -11,6 +11,8 @@ const keys = {}; // keyboard
 const adapt = val => val * width / 450;
 const unadapt = val => val * 450 / width;
 
+const collided = (x1, y1, w1, h1, x2, y2, w2, h2) => x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h2 > y2;
+
 const TILE_WIDTH = adapt(80);
 
 const textures = {
@@ -26,8 +28,27 @@ const spriteData = { // y offsets for animations
     }
 };
 
-let tileData, tileKeys; // json data
+let tileData, idToKey, keyToId = {}; // json data
 
+const colliders = {
+    "left_edge": [
+        [ 0, 0, 0.1, 2 ]
+    ],
+    "top_edge": [
+        [ 0, 0, 2, 0.1 ]
+    ],
+    "right_edge": [
+        [ 0.9, 0, 0.1, 2 ]
+    ],
+    "bottom_edge": [
+        [ 0, 0.5, 2, 0.1 ]
+    ]
+};
+
+colliders["top_left_corner"] = [...colliders.top_edge, ...colliders.left_edge];
+colliders["top_right_corner"] = [...colliders.top_edge, ...colliders.right_edge];
+colliders["bottom_right_corner"] = [...colliders.bottom_edge, ...colliders.right_edge];
+colliders["bottom_left_corner"] = [...colliders.bottom_edge, ...colliders.left_edge];
 
 // TODO: make them run in parallel
 function loadImg(path) {
@@ -48,7 +69,10 @@ async function preload() {
     textures.map = await loadImg("forest.png");
 
     tileData = await loadJSON("tileData.json");
-    tileKeys = await loadJSON("tileKeys.json");
+    idToKey = await loadJSON("tileKeys.json");
+    
+    for(let i = 0; i < idToKey.length; ++i)
+        keyToId[idToKey[i]] = i;
 }
 
 async function main() {
@@ -68,6 +92,7 @@ async function main() {
     ctx.imageSmoothingEnabled = false; // self-explainatory
 
     window.CENTER = new Vec2(width / 2, height / 2); // constant that represents the center of the screen
+    await preload();
 
     joystick = new Joystick(new Vec2(100, unadapt(height) - 100).modify(adapt));
     player = new Player(CENTER);
@@ -75,26 +100,11 @@ async function main() {
 
     setupEvents();
 
-    await preload();
     requestAnimationFrame(render);
 }
 
 function update() {
     player.update();
-
-    // temp
-    const movement = new Vec2();
-    if(keys["w"]) movement.y -= 1;
-    if(keys["a"]) movement.x -= 1;
-    if(keys["s"]) movement.y += 1;
-    if(keys["d"]) movement.x += 1;
-    movement.normalize();
-
-    if(movement.dist()) {
-        player.leftFacing = movement.x < 0;
-        player.setAnim("running");
-        player.pos.add(movement.mult(adapt(4)));
-    }
 }
 
 function render() {
@@ -108,6 +118,7 @@ function render() {
     ctx.translate(...player.pos.copy().mult(-1).add(CENTER));
 
     terrain.render();
+
     player.render();
     ctx.restore();
     

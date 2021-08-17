@@ -9,29 +9,30 @@ class Terrain
         for(let i = 0; i < this.map.length; ++i) {
             for(let j = 0; j < this.map[i].length; ++j) {
                 const x = j * TILE_WIDTH, y = i * TILE_WIDTH; // not using Vec2 because it's very expensive
-                if (!(x < view.x + width && x + TILE_WIDTH > view.x && y < view.y + height && y + TILE_WIDTH > view.y)) // checking if the tile is within the view
+                if(!collided(x, y, TILE_WIDTH, TILE_WIDTH, view.x, view.y, width, height)) // checking if the tile is within the view
                     continue;
 
-                const offset = tileData[tileKeys[this.map[i][j]]];
+                const offset = tileData[idToKey[this.map[i][j]]];
                 ctx.drawImage(textures.map, ...SpriteAnim.getCoords(...offset, 16), x, y, TILE_WIDTH, TILE_WIDTH);
             }
         }
     }
 
     static generate(i, j) {
-        let map = Array(i).fill(0).map(_ => Array(j).fill(4));
+        const map = Array(i).fill(0).map(_ => Array(j).fill(4));
         for(let k = 0; k < i; ++k) {
-            map[k][0] = 3;
-            map[k][j - 1] = 5;
+            map[k][0] = keyToId["left_edge"];
+            map[k][j - 1] = keyToId["right_edge"];
         }
         for(let k = 0; k < j; ++k) {
-            map[0][k] = 1;
-            map[i - 1][k] = 7;
+            map[0][k] = keyToId["top_edge"];
+            map[i - 1][k] = keyToId["bottom_edge"];
         }
-        map[0][0] = 0;
-        map[0][j - 1] = 2;
-        map[i - 1][0] = 6;
-        map[i - 1][j - 1] = 8
+
+        map[0][0] = keyToId["top_left_corner"];
+        map[0][j - 1] = keyToId["top_right_corner"];
+        map[i - 1][0] = keyToId["bottom_left_corner"];
+        map[i - 1][j - 1] = keyToId["bottom_right_corner"];
         return map;
     }
 }
