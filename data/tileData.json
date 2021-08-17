@@ -1,0 +1,11 @@
+{
+    "top_left_corner": [ 0, 0 ],
+    "top_edge": [ 1, 0 ],
+    "top_right_corner": [ 2, 0 ],
+    "left_edge": [ 0, 1 ],
+    "plain": [ 1, 1 ],
+    "right_edge": [ 2, 1 ],
+    "bottom_left_corner": [ 0, 2 ],
+    "bottom_edge": [ 1, 2 ],
+    "bottom_right_corner": [ 2, 2 ]
+}
