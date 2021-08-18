@@ -65,7 +65,9 @@ class Vec2
     
     limit(r)
     {
-      return this.normalize().mult(r);
+        if(this.dist() > r)
+            this.normalize().mult(r);
+        return this;
     }
 
     set(x, y)

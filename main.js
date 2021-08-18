@@ -11,7 +11,7 @@ const keys = {}; // keyboard
 const adapt = val => val * width / 450;
 const unadapt = val => val * 450 / width;
 
-const collided = (x1, y1, w1, h1, x2, y2, w2, h2) => x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h2 > y2;
+const collided = (x1, y1, w1, h1, x2, y2, w2, h2) => x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
 
 const TILE_WIDTH = adapt(80);
 
@@ -20,28 +20,33 @@ const textures = {
     map: null
 };
 
-const spriteData = { // y offsets for animations
+const spriteOffset = { // y offsets for animations
     player: {
         idle: 0,
         walking: 1,
         running: 2,
-    }
+    },
+    map: null,
+    decorations: null
 };
 
-let tileData, idToKey, keyToId = {}; // json data
+let spriteData, idToKey = [], keyToId = {}; // json data
 
 const colliders = {
     "left_edge": [
-        [ 0, 0, 0.1, 2 ]
+        [ 0, 0, 0.1, 1 ]
     ],
     "top_edge": [
-        [ 0, 0, 2, 0.1 ]
+        [ 0, 0, 1, 0.1 ]
     ],
     "right_edge": [
-        [ 0.9, 0, 0.1, 2 ]
+        [ 0.9, 0, 0.1, 1 ]
     ],
     "bottom_edge": [
-        [ 0, 0.5, 2, 0.1 ]
+        [ 0, 0.9, 1, 0.1 ]
+    ],
+    "bottom_tree_1": [
+        [ 0.2, 0.2, 0.6, 0.6 ]
     ]
 };
 
@@ -67,12 +72,14 @@ async function loadJSON(path) {
 async function preload() {
     textures.player = await loadImg("characters/bandit_.png");
     textures.map = await loadImg("forest.png");
+    textures.decorations = await loadImg("plainDecoration_0.png");
 
-    tileData = await loadJSON("tileData.json");
-    idToKey = await loadJSON("tileKeys.json");
-    
-    for(let i = 0; i < idToKey.length; ++i)
-        keyToId[idToKey[i]] = i;
+    spriteData = await loadJSON("spriteData.json");
+
+    for(const key in spriteData) {
+        keyToId[key] = idToKey.length;
+        idToKey.push(key);
+    } // aliases for the sprites
 }
 
 async function main() {
@@ -95,7 +102,7 @@ async function main() {
     await preload();
 
     joystick = new Joystick(new Vec2(100, unadapt(height) - 100).modify(adapt));
-    player = new Player(CENTER);
+    player = new Player(CENTER.copy().sub(new Vec2(1, 0).mult(TILE_WIDTH)));
     terrain = new Terrain();
 
     setupEvents();
@@ -118,8 +125,8 @@ function render() {
     ctx.translate(...player.pos.copy().mult(-1).add(CENTER));
 
     terrain.render();
-
     player.render();
+
     ctx.restore();
     
     joystick.render();

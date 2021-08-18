@@ -14,29 +14,45 @@ class Player extends SpriteAnim
         if(keys["a"]) movement.x -= 1;
         if(keys["s"]) movement.y += 1;
         if(keys["d"]) movement.x += 1;
-        movement.normalize();
 
-        const vel = (movement.dist() ? movement : joystick.dir().normalize()).mult(adapt(4));
+        const vel = (movement.dist() ? movement : joystick.dir()).normalize().mult(adapt(4));
 
         if(vel.dist()) {
             this.leftFacing = vel.x < 0;
             this.setAnim("running");
 
-            const j = this.pos.x / TILE_WIDTH | 0, i = this.pos.y / TILE_WIDTH | 0; // indices of the tiles we are colliding with
-            const collider = colliders[idToKey[terrain.map[i][j]]];
-            let move = true;
-            if(collider) {
-                for(const component of collider) {
-                    const data = [...component];
-                    data[0] += j; data[1] += i;
+            const options = [ vel, new Vec2(vel.x, 0), new Vec2(0, vel.y) ];
 
-                    if(collided(...this.getCollider(...vel), ...data.map(val => val * TILE_WIDTH))) {
-                        if(component === colliders["left_edge"][0] || component === colliders["right_edge"][0]) vel.x = 0;
-                        if(component === colliders["top_edge"][0] || component === colliders["bottom_edge"][0]) vel.y = 0;
+            for(const option of options) {
+                const [ j, i ] = this.getColliderOrigin(...option.copy().normalize().mult(adapt(32))).map(val => val / TILE_WIDTH | 0);
+                if(!terrain.inRange(j, i))
+                    continue;
+
+                let obstacle = false;
+            
+                for(const layer in terrain.layers) {
+                    const collider = colliders[idToKey[terrain.layers[layer][i][j]]];
+    
+                    if(collider) {
+                        for(const component of collider) {
+                            const data = [...component];
+                            data[0] += j; data[1] += i;
+        
+                            if(collided(...this.getCollider(...option), ...data.map(val => val * TILE_WIDTH))) {
+                                obstacle = true;
+                                break;
+                            }
+                        }
                     }
+
+                    if(obstacle) break;
+                }
+
+                if(!obstacle) {
+                    this.pos.add(option);
+                    break;
                 }
             }
-            this.pos.add(vel);
         } else {
             this.setAnim("idle");
         }
@@ -44,6 +60,10 @@ class Player extends SpriteAnim
 
     getCollider(offX = 0, offY = 0) {
         return [this.pos.x + offX + this.dims.x / 4 - this.dims.x / 2, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2, this.dims.x / 2, this.dims.y / 3];
+    }
+
+    getColliderOrigin(offX, offY) {
+        return [ this.pos.x + offX, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2 + this.dims.y / 6 ];
     }
 
     render() {

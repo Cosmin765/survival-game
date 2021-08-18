@@ -16,7 +16,7 @@ class SpriteAnim
     }
 
     setAnim(name) {
-        this.spriteOff = spriteData.player[name];
+        this.spriteOff = spriteOffset.player[name];
     }
 
     static getCoords(i, j, w) {

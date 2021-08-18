@@ -7,5 +7,7 @@
     "right_edge": [ 2, 1 ],
     "bottom_left_corner": [ 0, 2 ],
     "bottom_edge": [ 1, 2 ],
-    "bottom_right_corner": [ 2, 2 ]
+    "bottom_right_corner": [ 2, 2 ],
+    "bottom_tree_1": [ 1, 4 ],
+    "top_tree_1": [ 1, 3 ]
 }
