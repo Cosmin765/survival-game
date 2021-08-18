@@ -26,7 +26,7 @@ class Terrain
     }
 
     inRange(j, i) {
-        return j >= 0 && j < terrain.map[0].length && i >= 0 && i < terrain.map.length;
+        return j >= 0 && j < this.map[0].length && i >= 0 && i < this.map.length;
     }
 
     static generateMap(i = Terrain.DEFAULT_I, j = Terrain.DEFAULT_J) {

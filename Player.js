@@ -21,33 +21,41 @@ class Player extends SpriteAnim
             this.leftFacing = vel.x < 0;
             this.setAnim("running");
 
-            const options = [ vel, new Vec2(vel.x, 0), new Vec2(0, vel.y) ];
+            const options = [ vel, new Vec2(vel.x, 0), new Vec2(0, vel.y) ]; // the ways we can move
+            const origin = this.getColliderOrigin();
 
             for(const option of options) {
-                const [ j, i ] = this.getColliderOrigin(...option.copy().normalize().mult(adapt(32))).map(val => val / TILE_WIDTH | 0);
-                if(!terrain.inRange(j, i))
-                    continue;
+                const [ j, i ] = origin.map(val => val / TILE_WIDTH | 0); // the tile coords of the origin point
+
+                const positions = []; // the surrounding tiles' positions
+                for(let a = -1; a <= 1; ++a)
+                    for(let b = -1; b <= 1; ++b)
+                        positions.push([ a + j, b + i ]);
 
                 let obstacle = false;
-            
-                for(const layer in terrain.layers) {
-                    const collider = colliders[idToKey[terrain.layers[layer][i][j]]];
-    
-                    if(collider) {
-                        for(const component of collider) {
-                            const data = [...component];
-                            data[0] += j; data[1] += i;
+                
+                for(const [ j, i ] of positions) {
+                    if(!terrain.inRange(j, i))
+                        continue;
+                    
+                    for(const layer in terrain.layers) {
+                        const collider = colliders[idToKey[terrain.layers[layer][i][j]]];
         
-                            if(collided(...this.getCollider(...option), ...data.map(val => val * TILE_WIDTH))) {
-                                obstacle = true;
-                                break;
+                        if(collider) {
+                            for(const component of collider) {
+                                const data = [...component];
+                                data[0] += j; data[1] += i;
+            
+                                if(collided(...this.getCollider(...option), ...data.map(val => val * TILE_WIDTH))) {
+                                    obstacle = true;
+                                    break;
+                                }
                             }
                         }
+    
+                        if(obstacle) break;
                     }
-
-                    if(obstacle) break;
                 }
-
                 if(!obstacle) {
                     this.pos.add(option);
                     break;
@@ -62,7 +70,7 @@ class Player extends SpriteAnim
         return [this.pos.x + offX + this.dims.x / 4 - this.dims.x / 2, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2, this.dims.x / 2, this.dims.y / 3];
     }
 
-    getColliderOrigin(offX, offY) {
+    getColliderOrigin(offX = 0, offY = 0) {
         return [ this.pos.x + offX, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2 + this.dims.y / 6 ];
     }
 
