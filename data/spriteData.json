@@ -9,5 +9,7 @@
     "bottom_edge": [ 1, 2 ],
     "bottom_right_corner": [ 2, 2 ],
     "bottom_tree_1": [ 1, 4 ],
-    "top_tree_1": [ 1, 3 ]
+    "top_tree_1": [ 1, 3 ],
+    "bottom_tree_2": [ 2, 4 ],
+    "top_tree_2": [ 2, 3 ]
 }

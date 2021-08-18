@@ -10,14 +10,15 @@ const keys = {}; // keyboard
 
 const adapt = val => val * width / 450;
 const unadapt = val => val * 450 / width;
-
-const collided = (x1, y1, w1, h1, x2, y2, w2, h2) => x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
+const collided = (x1, y1, w1, h1, x2, y2, w2, h2) => x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2; // checks if 2 rectangles are colliding with the specified values
+const random = (min, max) => Math.random() * (max - min) + min;
 
 const TILE_WIDTH = adapt(80);
 
 const textures = {
     player: null,
-    map: null
+    map: null,
+    decorations: null
 };
 
 const spriteOffset = { // y offsets for animations
@@ -25,9 +26,7 @@ const spriteOffset = { // y offsets for animations
         idle: 0,
         walking: 1,
         running: 2,
-    },
-    map: null,
-    decorations: null
+    }
 };
 
 let spriteData, idToKey = [], keyToId = {}; // json data
@@ -46,7 +45,7 @@ const colliders = {
         [ 0, 0.9, 1, 0.1 ]
     ],
     "bottom_tree_1": [
-        [ 0.2, 0.2, 0.6, 0.6 ]
+        [ 0.4, 0, 0.2, 0.6 ]
     ]
 };
 
@@ -54,6 +53,8 @@ colliders["top_left_corner"] = [...colliders.top_edge, ...colliders.left_edge];
 colliders["top_right_corner"] = [...colliders.top_edge, ...colliders.right_edge];
 colliders["bottom_right_corner"] = [...colliders.bottom_edge, ...colliders.right_edge];
 colliders["bottom_left_corner"] = [...colliders.bottom_edge, ...colliders.left_edge];
+
+colliders["bottom_tree_2"] = colliders["bottom_tree_1"];
 
 // TODO: make them run in parallel
 function loadImg(path) {
@@ -101,9 +102,18 @@ async function main() {
     window.CENTER = new Vec2(width / 2, height / 2); // constant that represents the center of the screen
     await preload();
 
-    joystick = new Joystick(new Vec2(100, unadapt(height) - 100).modify(adapt));
-    player = new Player(CENTER.copy().sub(new Vec2(1, 0).mult(TILE_WIDTH)));
+    joystick = new Joystick(new Vec2(unadapt(width) - 100, unadapt(height) - 100).modify(adapt));
     terrain = new Terrain();
+
+    const spot = terrain.getEmptySpot();
+
+    if(spot) {
+        const pos = new Vec2(...spot).modify(val => val * TILE_WIDTH);
+        pos.x += TILE_WIDTH / 2;
+        player = new Player(pos);
+    } else {
+        console.log("no space");
+    }
 
     setupEvents();
 
@@ -120,12 +130,14 @@ function render() {
     // tiles are 16 x 16
     update();
     
+    ctx.fillStyle = "rgb(85, 125, 85)";
     ctx.fillRect(0, 0, width, height);
     ctx.save();
     ctx.translate(...player.pos.copy().mult(-1).add(CENTER));
 
     terrain.render();
     player.render();
+    terrain.renderUpper();
 
     ctx.restore();
     
