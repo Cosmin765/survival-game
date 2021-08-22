@@ -1,10 +1,18 @@
 class Terrain
 {
-    constructor(map = Terrain.generateMap(), decorations = Terrain.generateDecorations()) {
+    constructor(map = Terrain.generateEmpty(), decorations = Terrain.generateEmpty()) {
         this.map = map;
         this.decorations = decorations;
-        this.layers = { map, decorations };
-        this.upperLayer = this.calculateUpperLayer();
+        this.layers = {};
+        this.upperLayer = [];
+        
+        socket.emit("getTerrain");
+        socket.on("terrain", terrain => {
+            this.map = terrain.map;
+            this.decorations = terrain.decorations;
+            this.layers = terrain;
+            this.upperLayer = this.calculateUpperLayer();
+        });
     }
 
     calculateUpperLayer() {
@@ -12,7 +20,8 @@ class Terrain
 
         const upperSprites = [
             keyToId["top_tree_1"],
-            keyToId["top_tree_2"]
+            keyToId["top_tree_2"],
+            keyToId["top_tree_3"]
         ];
 
         for(let i = 0; i < this.decorations.length; ++i) {
@@ -28,9 +37,11 @@ class Terrain
 
     render() {
         const view = player.pos.copy().sub(CENTER);
+        const len1 = this.map.length;
+        const len2 = this.map[0].length;
         
-        for(let i = 0; i < this.map.length; ++i) {
-            for(let j = 0; j < this.map[i].length; ++j) {
+        for(let i = 0; i < len1; ++i) {
+            for(let j = 0; j < len2; ++j) {
                 const x = j * TILE_WIDTH, y = i * TILE_WIDTH; // not using Vec2 because it's very expensive
                 if(!collided(x, y, TILE_WIDTH, TILE_WIDTH, view.x, view.y, width, height)) // checking if the tile is within the view
                     continue;
@@ -58,20 +69,30 @@ class Terrain
         }
     }
 
-    inRange(j, i) {
+    inRange(i, j) {
         return j >= 0 && j < this.map[0].length && i >= 0 && i < this.map.length;
     }
 
     getEmptySpot() {
         for(let i = 1; i < this.map.length; ++i) {
-            for(let j = 0; j < this.map[i].length; ++j) {
-                if(!colliders[idToKey[this.map[i][j]]] && !colliders[idToKey[this.decorations[i][j]]]) {
-                    return [ j, i ];
+            for(let j = 1; j < this.map[i].length; ++j) {
+                let possible = true;
+                for(const layer in this.layers) {
+                    if(colliders[idToKey[this.layers[layer][i][j]]]) {
+                        possible = false;
+                        break;
+                    }
                 }
+
+                if(possible)
+                    return [ j, i ];
             }
         }
-
         return null;
+    }
+
+    static generateEmpty(i = Terrain.DEFAULT_I, j = Terrain.DEFAULT_J) {
+        return Array(i).fill(0).map(_ => Array(j).fill(keyToId["plain"]));
     }
 
     static generateMap(i = Terrain.DEFAULT_I, j = Terrain.DEFAULT_J) {
@@ -89,30 +110,49 @@ class Terrain
         map[0][j - 1] = keyToId["top_right_corner"];
         map[i - 1][0] = keyToId["bottom_left_corner"];
         map[i - 1][j - 1] = keyToId["bottom_right_corner"];
-
-        map[4][3] = keyToId["left_edge"];
         return map;
     }
 
     static generateDecorations(i = Terrain.DEFAULT_I, j = Terrain.DEFAULT_J) {
         const decorations = Array(i).fill(0).map(_ => Array(j).fill(null));
 
-        const treeCount = 1000;
-        const treeNames = [ "_tree_1", "_tree_2" ];
+        const generators = [
+            [ Terrain.genTree, 1000 ],
+            [ Terrain.genStone, 500 ]
+        ];
 
-        for(let k = 0; k < treeCount; ++k) {
-            const pos_i = random(1, i - 1) | 0;
-            const pos_j = random(1, j - 1) | 0;
-            const treeName = treeNames[random(0, 2) | 0];
-
-            if(decorations[pos_i][pos_j] !== null || decorations[pos_i - 1][pos_j] !== null)
-                continue;
-
-            decorations[pos_i][pos_j] = keyToId["bottom" + treeName];
-            decorations[pos_i - 1][pos_j] = keyToId["top" + treeName];
+        for(const [ generator, count ] of generators) {
+            for(let k = 0; k < count; ++k)
+                generator(decorations);
         }
-
+        
         return decorations;
+    }
+    
+    static genTree(container) {
+        const treeName = [ "_tree_1", "_tree_2", "_tree_3" ][random(0, 3) | 0];
+        
+        const [ i, j ] = Terrain.getRandCoord(container.length, container[0].length);
+
+        if(container[i][j] !== null || container[i - 1][j] !== null)
+            return;
+
+        container[i][j] = keyToId["bottom" + treeName];
+        container[i - 1][j] = keyToId["top" + treeName];
+    }
+
+    static genStone(container) {
+        const name = [ "stone_1", "stone_2" ][random(0, 2) | 0];
+        const [ i, j ] = Terrain.getRandCoord(container.length, container[0].length);
+        
+        if(container[i][j] !== null)
+            return;
+
+        container[i][j] = keyToId[name];
+    }
+
+    static getRandCoord(i, j) {
+        return [ random(1, i - 1) | 0, random(1, j - 1) | 0 ];
     }
 
     static DEFAULT_I = 100;

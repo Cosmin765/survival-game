@@ -35,7 +35,7 @@ class Player extends SpriteAnim
                 let obstacle = false;
                 
                 for(const [ j, i ] of positions) {
-                    if(!terrain.inRange(j, i))
+                    if(!terrain.inRange(i, j))
                         continue;
                     
                     for(const layer in terrain.layers) {
@@ -64,6 +64,12 @@ class Player extends SpriteAnim
         } else {
             this.setAnim("idle");
         }
+
+        socket.emit("store", {
+            pos: [...this.pos],
+            leftFacing: this.leftFacing,
+            spriteOff: this.spriteOff
+        });
     }
 
     getCollider(offX = 0, offY = 0) {
@@ -78,7 +84,6 @@ class Player extends SpriteAnim
         ctx.save();
         ctx.translate(...this.dims.copy().modify(val => -val / 2));
         ctx.drawImage(textures.player, ...SpriteAnim.getCoords(this.animIndex + 4 * this.leftFacing, this.spriteOff, 24), ...this.pos, ...this.dims);
-        
         ctx.restore();
         // ctx.strokeStyle = "red";
         // ctx.strokeRect(...this.getCollider());
