@@ -4,3 +4,96 @@ body {
     background-color: black;
     overscroll-behavior-y: none;
 }
+
+#c {
+    display: none;
+}
+
+.main-menu {
+    position: fixed;
+    width: 100vw;
+    height: 100%;
+    background: blue;
+    color: white;
+    font-size: 30px;
+}
+
+.bg {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-image: url("./assets/menu.png");
+    background-size: cover;
+    filter: blur(3px);
+}
+
+.option-container {
+    position: absolute;
+    bottom: 0;
+    width: 100vw;
+}
+
+.option {
+    position: relative;
+    width: 60vw;
+    height: 10vh;
+    left: 20vw;
+    margin: 20px 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 255, 0.2);
+    border: 2px black solid;
+}
+
+.option:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.connect-error {
+    position: fixed;
+    background: rgba(255, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    text-align: center;
+
+    width: 80%;
+    height: 20%;
+    left: 10%;
+    top: 40%;
+    font-size: 30px;
+    border: 2px solid red;
+    display: none;
+}
+
+.close {
+    position: absolute;
+    top: 0;
+    right: 0;
+    color: black;
+    padding: 5px;
+    background: white;
+}
+
+.loader {
+    border: 16px solid #f3f3f3;
+    margin: 20px;
+    border-radius: 50%;
+    border-top: 16px solid #3498db;
+    -webkit-animation: spin 2s linear infinite; /* Safari */
+    animation: spin 2s linear infinite;
+    display: none;
+}
+  
+/* Safari */
+@-webkit-keyframes spin {
+    0% { -webkit-transform: rotate(0deg); }
+    100% { -webkit-transform: rotate(360deg); }
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

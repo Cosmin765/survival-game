@@ -1,18 +1,24 @@
 class Terrain
 {
-    constructor(map = Terrain.generateEmpty(), decorations = Terrain.generateEmpty()) {
+    constructor(map = Terrain.generateMap(), decorations = Terrain.generateDecorations()) {
         this.map = map;
         this.decorations = decorations;
-        this.layers = {};
-        this.upperLayer = [];
+        this.layers = { map, decorations };
+        this.upperLayer = this.calculateUpperLayer();
         
-        socket.emit("getTerrain");
-        socket.on("terrain", terrain => {
-            this.map = terrain.map;
-            this.decorations = terrain.decorations;
-            this.layers = terrain;
-            this.upperLayer = this.calculateUpperLayer();
-        });
+        if(socket) {
+            socket.emit("getTerrain");
+            socket.on("terrain", terrain => {
+                this.map = terrain.map;
+                this.decorations = terrain.decorations;
+                this.layers = terrain;
+                this.upperLayer = this.calculateUpperLayer();
+    
+                const pos = new Vec2(...this.getEmptySpot()).modify(val => val * TILE_WIDTH);
+                pos.x += TILE_WIDTH / 2;
+                player = new Player(pos);
+            });
+        }
     }
 
     calculateUpperLayer() {

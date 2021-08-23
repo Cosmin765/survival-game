@@ -1,6 +1,7 @@
 window.onload = main;
 
 let canvas, ctx;
+const $ = name => document.querySelector(name);
 
 // const [ width, height ] = [ 900, 1600 ];
 const [ width, height ] = [ 450, 800 ];
@@ -63,7 +64,6 @@ colliders["top_left_corner"] = [...colliders.top_edge, ...colliders.left_edge];
 colliders["top_right_corner"] = [...colliders.top_edge, ...colliders.right_edge];
 colliders["bottom_right_corner"] = [...colliders.bottom_edge, ...colliders.right_edge];
 colliders["bottom_left_corner"] = [...colliders.bottom_edge, ...colliders.left_edge];
-
 colliders["bottom_tree_2"] = colliders["bottom_tree_1"];
 colliders["bottom_tree_3"] = colliders["bottom_tree_1"];
 
@@ -96,8 +96,16 @@ async function preload() {
 
 let started = false;
 async function main() {
-    canvas = document.querySelector("#c");
+    canvas = $("#c");
     ctx = canvas.getContext("2d");
+
+    
+
+    $(".online").addEventListener("click", connect);
+    $(".offline").addEventListener("click", init);
+    $(".close").addEventListener("click", () => {
+        $(".connect-error").style.display = "none";
+    });
 
     canvas.width = width;
     canvas.height = height;
@@ -113,46 +121,57 @@ async function main() {
 
     window.CENTER = new Vec2(width / 2, height / 2); // constant that represents the center of the screen
     await preload();
-    
-    socket = io.connect("http://192.168.1.6:5000");
-    
-    joystick = new Joystick(new Vec2(unadapt(width) - 100, unadapt(height) - 100).modify(adapt));
-    terrain = new Terrain();
+}
 
-    const spot = terrain.getEmptySpot();
-    if(spot) {
-        const pos = new Vec2(...spot).modify(val => val * TILE_WIDTH);
-        pos.x += TILE_WIDTH / 2;
-        player = new Player(pos);
-    } else {
-        console.log("no space");
-    }
+function setLayout() {
+    $(".main-menu").style.display = "none";
+    canvas.style.display = "block";
+    $(".loader").style.display = "none";
+}
 
-    setupEvents();
+function connect() {
+    $(".loader").style.display = "block";
+    socket = io.connect("http://109.98.216.123:5000");
     
-
+    socket.on("connect", () => {
+        if(started) return;
+        init();
+    });
+    
     socket.on("players", data => {
         for(const id in data) {
             if(id === socket.id) continue;
             if(!(id in others))
-                others[id] = new Other(data[id].pos);
+            others[id] = new Other(data[id].pos.map(adapt));
             
             for(const property in data[id])
-                others[id][property] = data[id][property];
+            others[id][property] = data[id][property];
+            
+            others[id].pos = data[id].pos.map(adapt); // adapt for the new resolution
         }
     });
-
-    socket.on("connect", () => {
-        if(started) return;
-        started = true;
-        requestAnimationFrame(render); 
-    });
     
-    if(socket.connected && !started) {
-        started = true;
-        requestAnimationFrame(render); 
-    }
+    socket.on("connect_error", () => { // offline
+        socket.close(); // stop trying to connect
+        $(".connect-error").style.display = "flex";
+        $(".loader").style.display = "none";
+    });
+
     socket.on("remove", id => delete others[id]);
+}
+
+function init() {
+    setLayout();
+
+    joystick = new Joystick(new Vec2(unadapt(width) - 100, unadapt(height) - 100).modify(adapt));
+    terrain = new Terrain();
+    
+    const pos = new Vec2(...terrain.getEmptySpot()).modify(val => val * TILE_WIDTH);
+    pos.x += TILE_WIDTH / 2;
+    player = new Player(pos);
+    started = true;
+    setupEvents();
+    requestAnimationFrame(render);
 }
 
 function update() {

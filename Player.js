@@ -65,11 +65,13 @@ class Player extends SpriteAnim
             this.setAnim("idle");
         }
 
-        socket.emit("store", {
-            pos: [...this.pos],
-            leftFacing: this.leftFacing,
-            spriteOff: this.spriteOff
-        });
+        if(socket) {
+            socket.emit("store", {
+                pos: [...this.pos].map(unadapt), // sending a normalized version
+                leftFacing: this.leftFacing,
+                spriteOff: this.spriteOff
+            });
+        }
     }
 
     getCollider(offX = 0, offY = 0) {
