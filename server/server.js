@@ -91,7 +91,8 @@ io.on('connection', socket => {
         textBox: {
             texts: [],
             visible: true
-        }
+        },
+        name: ""
     };
 
     socket.on("store", data => {

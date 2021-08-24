@@ -91,6 +91,7 @@ class TextBox
     {
         ctx.save();
         ctx.strokeStyle = "black";
+        ctx.lineWidth = adapt(3);
         ctx.fillStyle = this.color;
         ctx.translate(...this.size.copy().div(-2));
         ctx.beginPath();

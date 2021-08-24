@@ -16,7 +16,7 @@ class Terrain
     
                 const pos = new Vec2(...this.getEmptySpot()).modify(val => val * TILE_WIDTH);
                 pos.x += TILE_WIDTH / 2;
-                player = new Player(pos);
+                player.pos = pos;
             });
         }
     }

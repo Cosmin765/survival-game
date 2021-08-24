@@ -4,6 +4,7 @@ class Other extends SpriteAnim
         super(new Vec2(TILE_WIDTH, TILE_WIDTH).modify(unadapt).mult(24 / 16), 4);
         this.pos = pos;
         this.leftFacing = false;
+        this.name = "";
 
         this.textBox = new TextBox();
     }
@@ -24,6 +25,11 @@ class Other extends SpriteAnim
         ctx.translate(...this.pos);
         ctx.translate(0, adapt(-50));
         this.textBox.render();
+        ctx.translate(0, this.dims.y + adapt(20));
+        ctx.textAlign = "center";
+        ctx.fillStyle = "white";
+        ctx.font = `${adapt(24)}px Arial`;
+        ctx.fillText(this.name, 0, 0);
         ctx.restore();
     }
 }

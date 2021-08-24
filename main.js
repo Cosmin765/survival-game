@@ -129,7 +129,7 @@ async function main() {
         const text = input.value;
         input.value = "";
         player.textBox.setTexts([text]);
-        $(".input-container").style.display = "none";
+        $(".chat").style.display = "none";
     });
 
     canvas.width = width;
@@ -152,7 +152,8 @@ function setLayout() {
     $(".main-menu").style.display = "none";
     canvas.style.display = "block";
     $(".loader").style.display = "none";
-    $(".input-container").style.width = `${(width - adapt(40)) / ratio}px`;
+    $(".chat").style.width = `${(width - adapt(40)) / ratio}px`;
+    $(".name").style.display = "none";
 }
 
 function connect() {
@@ -173,6 +174,7 @@ function connect() {
             others[id].pos = data[id].pos.map(adapt); // adapt for the new resolution
             others[id].leftFacing = data[id].leftFacing;
             others[id].spriteOff = data[id].spriteOff;
+            others[id].name = data[id].name;
             if(!data[id].textBox.texts.equals(others[id].textBox.last)) {
                 others[id].textBox.setTexts(data[id].textBox.texts);
                 others[id].textBox.visible = data[id].textBox.visible;
@@ -197,7 +199,7 @@ function init() {
         pos: new Vec2(width / 2, adapt(25)),
         size: new Vec2(50, 50).modify(adapt),
         fontSize: adapt(20),
-        handler: () => $(".input-container").style.display = "flex" // TODO
+        handler: () => $(".chat").style.display = "flex" // TODO
     };
     buttons.chat = new ActionButton(options);
 
@@ -207,6 +209,7 @@ function init() {
     const pos = new Vec2(...terrain.getEmptySpot()).modify(val => val * TILE_WIDTH);
     pos.x += TILE_WIDTH / 2;
     player = new Player(pos);
+    player.name = $(".name input").value;
     started = true;
     setupEvents();
     requestAnimationFrame(render);
