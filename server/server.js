@@ -86,12 +86,16 @@ io.on('connection', socket => {
 
     playersData[socket.id] = {
         pos: [ -1000, -1000 ],
-        leftFacing: false
+        leftFacing: false,
+        spriteOff: 0,
+        textBox: {
+            texts: [],
+            visible: true
+        }
     };
 
     socket.on("store", data => {
-        for(const property in data)
-            playersData[socket.id][property] = data[property];
+        playersData[socket.id] = data;
     });
 
     socket.on("getTerrain", () => {

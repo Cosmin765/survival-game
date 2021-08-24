@@ -1,17 +1,19 @@
 class ActionButton extends Interactive
 {
-    constructor({ text, handler = () => {}, displayCondition = () => true })
+    // constructor(text, pos, handler = () => {}, displayCondition = () => true)
+    constructor(options)
     {
-        const size = new Vec2(150, 75).modify(adapt);
-        const pos = new Vec2(width - adapt(100), height * 3 / 4);
+        const size = options.size || new Vec2(150, 75).modify(adapt);
+        const pos = options.pos;
 
         super(pos.x - size.x / 2, pos.y - size.y / 2, ...size);
         this.pos = pos.copy();
         this.size = size;
-        this.text = text;
+        this.text = options.text;
         this.pressed = false;
-        this.handler = handler.bind(this);
-        this.displayCondition = displayCondition;
+        this.handler = (options.handler || (() => {})).bind(this);
+        this.displayCondition = options.displayCondition || (() => true);
+        this.fontSize = options.fontSize || adapt(22);
     }
 
     press()
@@ -44,7 +46,7 @@ class ActionButton extends Interactive
         ctx.fillRect(...rectData);
         ctx.strokeRect(...rectData);
         
-        ctx.font = `${adapt(22)}px Arial`;
+        ctx.font = `${this.fontSize}px Arial`;
         ctx.fillStyle = this.pressed ? "red" : "#000";
         const textWidth = ctx.measureText(this.text).width;
         ctx.fillText(this.text, ...this.pos.copy().add(new Vec2(-textWidth / 2, adapt(10))));

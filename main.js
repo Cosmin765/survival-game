@@ -1,16 +1,36 @@
 window.onload = main;
 
+Array.prototype.equals = function(array) {
+    if (!array)
+        return false;
+
+    if (this.length != array.length)
+        return false;
+
+    for (var i = 0, l=this.length; i < l; i++) {
+        if (this[i] instanceof Array && array[i] instanceof Array) {
+            if (!this[i].equals(array[i]))
+                return false;       
+        }           
+        else if (this[i] != array[i]) { 
+            return false;   
+        }           
+    }       
+    return true;
+}
+
 let canvas, ctx;
 const $ = name => document.querySelector(name);
 
-// const [ width, height ] = [ 900, 1600 ];
-const [ width, height ] = [ 450, 800 ];
+const [ width, height ] = [ 900, 1600 ];
+// const [ width, height ] = [ 450, 800 ];
 let joystick, ratio, player, terrain;
 const buttons = {}; // drawn buttons
 const keys = {}; // keyboard
 
 const adapt = val => val * width / 450;
 const unadapt = val => val * 450 / width;
+const wait = amount => new Promise(resolve => setTimeout(resolve, amount));
 const collided = (x1, y1, w1, h1, x2, y2, w2, h2) => x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2; // checks if 2 rectangles are colliding with the specified values
 const random = (min, max) => Math.random() * (max - min) + min;
 
@@ -99,12 +119,17 @@ async function main() {
     canvas = $("#c");
     ctx = canvas.getContext("2d");
 
-    
-
     $(".online").addEventListener("click", connect);
     $(".offline").addEventListener("click", init);
     $(".close").addEventListener("click", () => {
         $(".connect-error").style.display = "none";
+    });
+    $("input.button").addEventListener("click", () => {
+        const input = $("input.text");
+        const text = input.value;
+        input.value = "";
+        player.textBox.setTexts([text]);
+        $(".input-container").style.display = "none";
     });
 
     canvas.width = width;
@@ -127,6 +152,7 @@ function setLayout() {
     $(".main-menu").style.display = "none";
     canvas.style.display = "block";
     $(".loader").style.display = "none";
+    $(".input-container").style.width = `${(width - adapt(40)) / ratio}px`;
 }
 
 function connect() {
@@ -142,12 +168,15 @@ function connect() {
         for(const id in data) {
             if(id === socket.id) continue;
             if(!(id in others))
-            others[id] = new Other(data[id].pos.map(adapt));
-            
-            for(const property in data[id])
-            others[id][property] = data[id][property];
+                others[id] = new Other();
             
             others[id].pos = data[id].pos.map(adapt); // adapt for the new resolution
+            others[id].leftFacing = data[id].leftFacing;
+            others[id].spriteOff = data[id].spriteOff;
+            if(!data[id].textBox.texts.equals(others[id].textBox.last)) {
+                others[id].textBox.setTexts(data[id].textBox.texts);
+                others[id].textBox.visible = data[id].textBox.visible;
+            }
         }
     });
     
@@ -156,12 +185,21 @@ function connect() {
         $(".connect-error").style.display = "flex";
         $(".loader").style.display = "none";
     });
-
+    
     socket.on("remove", id => delete others[id]);
 }
 
 function init() {
     setLayout();
+
+    const options = {
+        text: "Chat",
+        pos: new Vec2(width / 2, adapt(25)),
+        size: new Vec2(50, 50).modify(adapt),
+        fontSize: adapt(20),
+        handler: () => $(".input-container").style.display = "flex" // TODO
+    };
+    buttons.chat = new ActionButton(options);
 
     joystick = new Joystick(new Vec2(unadapt(width) - 100, unadapt(height) - 100).modify(adapt));
     terrain = new Terrain();
@@ -199,6 +237,8 @@ function render() {
 
     ctx.restore();
     
+    for(const key in buttons)
+        buttons[key].render();
     joystick.render();
 
     requestAnimationFrame(render);

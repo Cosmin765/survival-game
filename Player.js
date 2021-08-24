@@ -4,10 +4,13 @@ class Player extends SpriteAnim
         super(new Vec2(TILE_WIDTH, TILE_WIDTH).modify(unadapt).mult(24 / 16), 4);
         this.pos = pos.copy();
         this.leftFacing = false;
+
+        this.textBox = new TextBox(["hello!"]);
     }
 
     update() {
         this.updateAnim();
+        this.textBox.update();
 
         const movement = new Vec2();
         if(keys["w"]) movement.y -= 1;
@@ -69,7 +72,11 @@ class Player extends SpriteAnim
             socket.emit("store", {
                 pos: [...this.pos].map(unadapt), // sending a normalized version
                 leftFacing: this.leftFacing,
-                spriteOff: this.spriteOff
+                spriteOff: this.spriteOff,
+                textBox: {
+                    texts: this.textBox.texts,
+                    visible: this.textBox.visible
+                }
             });
         }
     }
@@ -86,6 +93,12 @@ class Player extends SpriteAnim
         ctx.save();
         ctx.translate(...this.dims.copy().modify(val => -val / 2));
         ctx.drawImage(textures.player, ...SpriteAnim.getCoords(this.animIndex + 4 * this.leftFacing, this.spriteOff, 24), ...this.pos, ...this.dims);
+        ctx.restore();
+        
+        ctx.save();
+        ctx.translate(...this.pos);
+        ctx.translate(0, adapt(-50));
+        this.textBox.render();
         ctx.restore();
         // ctx.strokeStyle = "red";
         // ctx.strokeRect(...this.getCollider());

@@ -86,7 +86,31 @@ body {
     animation: spin 2s linear infinite;
     display: none;
 }
-  
+
+.input-container {
+    /* display: flex; */
+    position: absolute;
+    top: 50px;
+    margin: 0 20px;
+    width: calc(100vw - 40px);
+    display: none;
+}
+
+input.text {
+    flex: 1;
+    padding: 10px;
+}
+
+input.button {
+    background-color: blue;
+    color: white;
+    border: none;
+}
+
+input.button:hover {
+    background-color: rgb(78, 78, 255);
+}
+
 /* Safari */
 @-webkit-keyframes spin {
     0% { -webkit-transform: rotate(0deg); }
