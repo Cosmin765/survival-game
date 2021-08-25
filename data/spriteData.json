@@ -15,5 +15,11 @@
     "bottom_tree_3": [ 5, 4 ],
     "top_tree_3": [ 5, 3 ],
     "stone_1": [ 2, 5 ],
-    "stone_2": [ 3, 5 ]
+    "stone_2": [ 3, 5 ],
+    "upper_top_tree_1": [ 0, 0 ],
+    "upper_bottom_tree_1": [ 0, 1 ],
+    "upper_top_tree_2": [ 1, 0 ],
+    "upper_bottom_tree_2": [ 1, 1 ],
+    "upper_top_tree_3": [ 2, 0 ],
+    "upper_bottom_tree_3": [ 2, 1 ]
 }

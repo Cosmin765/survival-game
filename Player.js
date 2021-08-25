@@ -5,8 +5,21 @@ class Player extends SpriteAnim
         this.pos = pos.copy();
         this.leftFacing = false;
         this.name = "";
+        this.nameColor = "white";
 
         this.textBox = new TextBox(["Hello, world!"]);
+
+        setInterval(() => {
+            if(socket) {
+                socket.emit("store", {
+                    pos: [...this.pos].map(unadapt), // sending a normalized version
+                    leftFacing: this.leftFacing,
+                    spriteOff: this.spriteOff,
+                    texts: this.textBox.visible ? this.textBox.texts : [], // no point in sending the texts if they are not visible
+                    name: this.name
+                });
+            }
+        }, 1000 / 30);
     }
 
     update() {
@@ -68,19 +81,6 @@ class Player extends SpriteAnim
         } else {
             this.setAnim("idle");
         }
-
-        if(socket) {
-            socket.emit("store", {
-                pos: [...this.pos].map(unadapt), // sending a normalized version
-                leftFacing: this.leftFacing,
-                spriteOff: this.spriteOff,
-                textBox: {
-                    texts: this.textBox.texts,
-                    visible: this.textBox.visible
-                },
-                name: this.name
-            });
-        }
     }
 
     getCollider(offX = 0, offY = 0) {
@@ -97,17 +97,20 @@ class Player extends SpriteAnim
         ctx.drawImage(textures.player, ...SpriteAnim.getCoords(this.animIndex + 4 * this.leftFacing, this.spriteOff, 24), ...this.pos, ...this.dims);
         ctx.restore();
         
+        // ctx.strokeStyle = "red";
+        // ctx.strokeRect(...this.getCollider());
+    }
+    
+    renderUpper() {
         ctx.save();
         ctx.translate(...this.pos);
         ctx.translate(0, adapt(-50));
-        this.textBox.render();
-        ctx.translate(0, this.dims.y + adapt(20));
+        this.textBox.render(); // textbox
+        ctx.translate(0, this.dims.y / 2 + adapt(80));
         ctx.textAlign = "center";
-        ctx.fillStyle = "white";
-        ctx.font = `${adapt(24)}px Arial`;
-        ctx.fillText(this.name, 0, 0);
+        ctx.fillStyle = this.nameColor;
+        ctx.font = `${adapt(18)}px Arial`;
+        ctx.fillText(this.name, 0, 0); // name
         ctx.restore();
-        // ctx.strokeStyle = "red";
-        // ctx.strokeRect(...this.getCollider());
     }
 }

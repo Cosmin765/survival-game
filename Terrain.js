@@ -27,13 +27,16 @@ class Terrain
         const upperSprites = [
             keyToId["top_tree_1"],
             keyToId["top_tree_2"],
-            keyToId["top_tree_3"]
+            keyToId["top_tree_3"],
+            keyToId["bottom_tree_1"],
+            keyToId["bottom_tree_2"],
+            keyToId["bottom_tree_3"]
         ];
 
         for(let i = 0; i < this.decorations.length; ++i) {
             for(let j = 0; j < this.decorations[i].length; ++j) {
                 if(upperSprites.includes(this.decorations[i][j])) {
-                    upperLayer.push({ i, j, id: this.decorations[i][j] });
+                    upperLayer.push({ i, j, id: keyToId["upper_" + idToKey[this.decorations[i][j]]] });
                 }
             }
         }
@@ -71,7 +74,7 @@ class Terrain
 
             if(ob.id === null) continue;
             const offset = spriteData[idToKey[ob.id]];
-            ctx.drawImage(textures.decorations, ...SpriteAnim.getCoords(...offset, 16), x, y, TILE_WIDTH, TILE_WIDTH);
+            ctx.drawImage(textures.upperLayer, ...SpriteAnim.getCoords(...offset, 16), x, y, TILE_WIDTH, TILE_WIDTH);
         }
     }
 

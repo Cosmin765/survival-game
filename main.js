@@ -1,4 +1,5 @@
 window.onload = main;
+const MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
 
 Array.prototype.equals = function(array) {
     if (!array)
@@ -43,7 +44,8 @@ const TILE_WIDTH = adapt(80);
 const textures = {
     player: null,
     map: null,
-    decorations: null
+    decorations: null,
+    upperLayer: null
 };
 
 const spriteOffset = { // y offsets for animations
@@ -70,7 +72,7 @@ const colliders = {
         [ 0, 0.9, 1, 0.1 ]
     ],
     "bottom_tree_1": [
-        [ 0.4, 0, 0.2, 0.6 ]
+        [ 0.4, 0.2, 0.2, 0.4 ]
     ],
     "stone_1": [
         [ 0.3, 0.2, 0.4, 0.4 ]
@@ -105,6 +107,7 @@ async function preload() {
     textures.player = await loadImg("characters/bandit_.png");
     textures.map = await loadImg("forest.png");
     textures.decorations = await loadImg("plainDecoration_0.png");
+    textures.upperLayer = await loadImg("upperLayer.png");
 
     spriteData = await loadJSON("spriteData.json");
 
@@ -126,7 +129,7 @@ async function main() {
     });
     $("input.button").addEventListener("click", () => {
         const input = $("input.text");
-        const text = input.value;
+        const text = input.value.slice(0, 50);
         input.value = "";
         player.textBox.setTexts([text]);
         $(".chat").style.display = "none";
@@ -175,9 +178,10 @@ function connect() {
             others[id].leftFacing = data[id].leftFacing;
             others[id].spriteOff = data[id].spriteOff;
             others[id].name = data[id].name;
-            if(!data[id].textBox.texts.equals(others[id].textBox.last)) {
-                others[id].textBox.setTexts(data[id].textBox.texts);
-                others[id].textBox.visible = data[id].textBox.visible;
+            if(others[id].name === "Cosmin")
+                others[id].nameColor = "cyan";
+            if(!data[id].texts.equals(others[id].textBox.last)) {
+                others[id].textBox.setTexts(data[id].texts);
             }
         }
     });
@@ -194,22 +198,33 @@ function connect() {
 function init() {
     setLayout();
 
-    const options = {
-        text: "Chat",
-        pos: new Vec2(width / 2, adapt(25)),
-        size: new Vec2(50, 50).modify(adapt),
-        fontSize: adapt(20),
-        handler: () => $(".chat").style.display = "flex" // TODO
-    };
-    buttons.chat = new ActionButton(options);
+    { // creating a scope
+        const options = {
+            text: "Chat",
+            pos: new Vec2(width / 2, adapt(25)),
+            size: new Vec2(50, 50).modify(adapt),
+            fontSize: adapt(20),
+            handler: () => {
+                const opposite = {
+                    "": "flex", // sometimes, none in display is returned as an empty string. Why, JavaScript?... WHY?
+                    "flex": "none",
+                    "none": "flex"
+                };
+                const value = $(".chat").style.display;
+                $(".chat").style.display = opposite[value];
+            }
+        };
+        buttons.chat = new ActionButton(options);
+    }
 
-    joystick = new Joystick(new Vec2(unadapt(width) - 100, unadapt(height) - 100).modify(adapt));
+    joystick = new Joystick(new Vec2(width - adapt(100), height - adapt(100)));
     terrain = new Terrain();
     
     const pos = new Vec2(...terrain.getEmptySpot()).modify(val => val * TILE_WIDTH);
     pos.x += TILE_WIDTH / 2;
     player = new Player(pos);
-    player.name = $(".name input").value;
+    player.name = $(".name input").value.slice(0, 20) || "Anonymous";
+    if(player.name === "Cosmin") player.nameColor = "cyan";
     started = true;
     setupEvents();
     requestAnimationFrame(render);
@@ -234,9 +249,13 @@ function render() {
 
     for(const id in others)
         others[id].render();
-
     player.render();
+
     terrain.renderUpper();
+
+    for(const id in others)
+        others[id].renderUpper();
+    player.renderUpper();
 
     ctx.restore();
     
@@ -271,83 +290,85 @@ function setupEvents()
             }
         }
     });
-
-    addEventListener("mousedown", e => {
-        const pos = new Vec2(e.clientX, e.clientY).mult(ratio);
-
-        if(joystick.clicked(pos)) {
-            joystick.setTouch(true, pos);
-        }
-
-        for(const type in buttons)
-        {
-            const btn = buttons[type];
-            if(btn.clicked(pos))
-                btn.press();
-        }
-    });
-
+    
     addEventListener("touchmove", e => {
         for(let i = 0; i < e.touches.length; ++i)
         {
             const touch = e.touches[i];
             const pos = new Vec2(touch.pageX, touch.pageY).mult(ratio);
-
+            
             if(joystick.touchID === touch.identifier)
-                joystick.update(pos);
+            joystick.update(pos);
         }
     });
-
-    addEventListener("mousemove", e => {
-        const pos = new Vec2(e.clientX, e.clientY).mult(ratio);
-
-        if(joystick.touchID)
-            joystick.update(pos);
-    });
-
+    
     addEventListener("touchend", e => {
         let present = false;
-
+        
         for(let i = 0; i < e.touches.length; ++i)
         {
             const touch = e.touches[i];
             const pos = new Vec2(touch.pageX, touch.pageY).mult(ratio);
-
+            
             if(pos.equals(joystick.lastPos)) {
                 present = true;
                 break;
             }
         }
-
+        
         if(!present) {
             joystick.removeTouch();
         }
-
+        
         for(const type in buttons)
         {
             const btn = buttons[type];
             let present = false;
-
+            
             for(let i = 0; i < e.touches.length; ++i)
             {
                 const touch = e.touches[i];
                 const pos = new Vec2(touch.pageX, touch.pageY).mult(ratio);
-
+                
                 if(btn.clicked(pos)) {
                     present = true;
                     break;
                 }
             }
-
+            
             if(!present)
-                btn.release();
+            btn.release();
         }
     });
-
-    addEventListener("mouseup", e => {
-        joystick.removeTouch();
-
-        for(const type in buttons)
-            buttons[type].release();
-    });
+    
+    if(!MOBILE) {
+        addEventListener("mousedown", e => {
+            const pos = new Vec2(e.clientX, e.clientY).mult(ratio);
+    
+            if(joystick.clicked(pos)) {
+                joystick.setTouch(true, pos);
+            }
+    
+            for(const type in buttons)
+            {
+                const btn = buttons[type];
+                if(btn.clicked(pos))
+                    btn.press();
+            }
+        });
+    
+        addEventListener("mousemove", e => {
+            const pos = new Vec2(e.clientX, e.clientY).mult(ratio);
+    
+            if(joystick.touchID)
+                joystick.update(pos);
+        });
+    
+        addEventListener("mouseup", e => {
+            joystick.removeTouch();
+    
+            for(const type in buttons)
+                buttons[type].release();
+        });
+    }
 }

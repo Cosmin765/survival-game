@@ -88,10 +88,7 @@ io.on('connection', socket => {
         pos: [ -1000, -1000 ],
         leftFacing: false,
         spriteOff: 0,
-        textBox: {
-            texts: [],
-            visible: true
-        },
+        texts: [],
         name: ""
     };
 
@@ -109,4 +106,4 @@ io.on('connection', socket => {
     });
 });
 
-setInterval(() => io.emit("players", playersData), 1000 / 60);
+setInterval(() => io.emit("players", playersData), 1000 / 30);

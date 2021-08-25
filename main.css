@@ -100,8 +100,11 @@ body {
     display: none;
 }
 
-.name input {
+input.text {
     text-align: center;
+}
+
+.name input {
     font-size: 20px;
 }
 
