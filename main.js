@@ -53,6 +53,8 @@ const spriteOffset = { // y offsets for animations
         idle: 0,
         walking: 1,
         running: 2,
+        dying: 5,
+        attack: 6,
     }
 };
 
@@ -201,8 +203,8 @@ function init() {
     { // creating a scope
         const options = {
             text: "Chat",
-            pos: new Vec2(width / 2, adapt(25)),
             size: new Vec2(50, 50).modify(adapt),
+            pos: new Vec2(width / 2, adapt(25)),
             fontSize: adapt(20),
             handler: () => {
                 const opposite = {
@@ -215,6 +217,18 @@ function init() {
             }
         };
         buttons.chat = new ActionButton(options);
+    }
+
+    {
+        const options = {
+            text: "Attack",
+            size: new Vec2(100, 50).modify(adapt),
+            pos: new Vec2(adapt(50 + 50), height - adapt(25 + 100)),
+            handler: () => {
+                player.setAnim("attack", false, 3);
+            }
+        };
+        buttons.attack = new ActionButton(options);
     }
 
     joystick = new Joystick(new Vec2(width - adapt(100), height - adapt(100)));
