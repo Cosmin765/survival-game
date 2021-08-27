@@ -31,7 +31,7 @@ class Other extends SpriteAnim
         ctx.translate(0, this.dims.y / 2 + adapt(80));
         ctx.textAlign = "center";
         ctx.fillStyle = this.nameColor;
-        ctx.font = `${adapt(24)}px Arial`;
+        ctx.font = `${adapt(18)}px Arial`;
         ctx.fillText(this.name, 0, 0);
         ctx.restore();
     }

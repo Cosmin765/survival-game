@@ -1,5 +1,6 @@
 window.onload = main;
 const MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+const LOCAL = true;
 
 Array.prototype.equals = function(array) {
     if (!array)
@@ -8,7 +9,7 @@ Array.prototype.equals = function(array) {
     if (this.length != array.length)
         return false;
 
-    for (var i = 0, l=this.length; i < l; i++) {
+    for (var i = 0, l = this.length; i < l; i++) {
         if (this[i] instanceof Array && array[i] instanceof Array) {
             if (!this[i].equals(array[i]))
                 return false;       
@@ -18,13 +19,13 @@ Array.prototype.equals = function(array) {
         }           
     }       
     return true;
-}
+} // completely stolen code, hehe
 
 let canvas, ctx;
 const $ = name => document.querySelector(name);
 
-const [ width, height ] = [ 900, 1600 ];
-// const [ width, height ] = [ 450, 800 ];
+// const [ width, height ] = [ 900, 1600 ];
+const [ width, height ] = [ 450, 800 ];
 let joystick, ratio, player, terrain;
 const buttons = {}; // drawn buttons
 const keys = {}; // keyboard
@@ -163,7 +164,7 @@ function setLayout() {
 
 function connect() {
     $(".loader").style.display = "block";
-    socket = io.connect("http://109.98.216.123:5000");
+    socket = io.connect(LOCAL ? "http://192.168.1.6:5000" : "http://109.98.216.123:5000");
     
     socket.on("connect", () => {
         if(started) return;
