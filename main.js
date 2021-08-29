@@ -1,6 +1,7 @@
 window.onload = main;
 const MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
 const LOCAL = true;
+const FRAMERATE = 60;
 
 Array.prototype.equals = function(array) {
     if (!array)
@@ -111,6 +112,7 @@ async function preload() {
     textures.map = await loadImg("forest.png");
     textures.decorations = await loadImg("plainDecoration_0.png");
     textures.upperLayer = await loadImg("upperLayer.png");
+    textures.towers = await loadImg("towers.png");
 
     spriteData = await loadJSON("spriteData.json");
 
@@ -125,19 +127,6 @@ async function main() {
     canvas = $("#c");
     ctx = canvas.getContext("2d");
 
-    $(".online").addEventListener("click", connect);
-    $(".offline").addEventListener("click", init);
-    $(".close").addEventListener("click", () => {
-        $(".connect-error").style.display = "none";
-    });
-    $("input.button").addEventListener("click", () => {
-        const input = $("input.text");
-        const text = input.value.slice(0, 50);
-        input.value = "";
-        player.textBox.setTexts([text]);
-        $(".chat").style.display = "none";
-    });
-
     canvas.width = width;
     canvas.height = height;
 
@@ -151,55 +140,20 @@ async function main() {
     ctx.imageSmoothingEnabled = false; // self-explainatory
 
     window.CENTER = new Vec2(width / 2, height / 2); // constant that represents the center of the screen
+    
+    $(".online").addEventListener("click", connect);
+    $(".offline").addEventListener("click", init);
+    $(".close").addEventListener("click", () => $(".connect-error").style.display = "none");
+    $(".chat .button").addEventListener("click", () => {
+        const input = $(".chat .text");
+        const text = input.value.slice(0, 50);
+        input.value = "";
+        player.textBox.setTexts([text]);
+        $(".chat").style.display = "none";
+    });
+
     await preload();
-}
-
-function setLayout() {
-    $(".main-menu").style.display = "none";
-    canvas.style.display = "block";
-    $(".loader").style.display = "none";
-    $(".chat").style.width = `${(width - adapt(40)) / ratio}px`;
-    $(".name").style.display = "none";
-}
-
-function connect() {
-    $(".loader").style.display = "block";
-    socket = io.connect(LOCAL ? "http://192.168.1.6:5000" : "http://109.98.216.123:5000");
-    
-    socket.on("connect", () => {
-        if(started) return;
-        init();
-    });
-    
-    socket.on("players", data => {
-        for(const id in data) {
-            if(id === socket.id) continue;
-            if(!(id in others))
-                others[id] = new Other();
-            
-            others[id].pos = data[id].pos.map(adapt); // adapt for the new resolution
-            others[id].leftFacing = data[id].leftFacing;
-            others[id].spriteOff = data[id].spriteOff;
-            others[id].name = data[id].name;
-            if(others[id].name === "Cosmin")
-                others[id].nameColor = "cyan";
-            if(!data[id].texts.equals(others[id].textBox.last)) {
-                others[id].textBox.setTexts(data[id].texts);
-            }
-        }
-    });
-    
-    socket.on("connect_error", () => { // offline
-        socket.close(); // stop trying to connect
-        $(".connect-error").style.display = "flex";
-        $(".loader").style.display = "none";
-    });
-    
-    socket.on("remove", id => delete others[id]);
-}
-
-function init() {
-    setLayout();
+    $("body").style.display = "initial";
 
     { // creating a scope
         const options = {
@@ -215,10 +169,11 @@ function init() {
                 };
                 const value = $(".chat").style.display;
                 $(".chat").style.display = opposite[value];
+                setTimeout(() => $(".chat .text").focus(), 150);
             }
         };
         buttons.chat = new ActionButton(options);
-    }
+    } // chat button
 
     {
         const options = {
@@ -230,7 +185,7 @@ function init() {
             }
         };
         buttons.attack = new ActionButton(options);
-    }
+    } // attack button
 
     joystick = new Joystick(new Vec2(width - adapt(100), height - adapt(100)));
     terrain = new Terrain();
@@ -238,6 +193,55 @@ function init() {
     const pos = new Vec2(...terrain.getEmptySpot()).modify(val => val * TILE_WIDTH);
     pos.x += TILE_WIDTH / 2;
     player = new Player(pos);
+}
+
+function connect() {
+    $(".loader").style.display = "block";
+    socket = io.connect(LOCAL ? "http://192.168.1.6:5000" : "http://109.98.216.123:5000");
+    
+    socket.on("connect", () => {
+        if(started) return;
+        terrain.getFromServer();
+        init();
+    });
+    
+    socket.on("players", data => {
+        for(const id in data) {
+            if(id === socket.id) continue;
+            if(!(id in others))
+                others[id] = new Other();
+            
+            others[id].pos = data[id].pos.map(adapt); // adapt for the new resolution
+            others[id].leftFacing = data[id].leftFacing;
+            others[id].spriteOff = data[id].spriteOff;
+            others[id].team = data[id].team;
+            others[id].name = data[id].name;
+            if(!data[id].texts.equals(others[id].textBox.last)) {
+                others[id].textBox.setTexts(data[id].texts);
+            }
+        }
+    });
+
+    socket.on("team", team => {
+        player.team = team;
+    });
+    
+    socket.on("connect_error", () => { // offline
+        socket.close(); // stop trying to connect
+        $(".connect-error").style.display = "flex";
+        $(".loader").style.display = "none";
+    });
+    
+    socket.on("remove", id => delete others[id]);
+}
+
+function init() {
+    $(".main-menu").style.display = "none";
+    canvas.style.display = "block";
+    $(".loader").style.display = "none";
+    $(".chat").style.width = `${(width - adapt(40)) / ratio}px`;
+    $(".name").style.display = "none";
+    
     player.name = $(".name input").value.slice(0, 20) || "Anonymous";
     if(player.name === "Cosmin") player.nameColor = "cyan";
     started = true;
@@ -247,13 +251,25 @@ function init() {
 
 function update() {
     player.update();
+    terrain.update();
 }
 
-function render() {
+let lastTime = 0;
+let timeSinceLast = 0;
+async function render(time) {
     // credit to analogstudios for the assets
     // characters are 24 x 24
     // tiles are 16 x 16
-    update();
+
+    timeSinceLast += time - lastTime;
+    const desiredTime = 1000 / FRAMERATE;
+
+    while(timeSinceLast > desiredTime) {
+        timeSinceLast -= desiredTime;
+        update();
+    }
+    lastTime = time;
+
     
     ctx.fillStyle = "rgb(85, 125, 85)";
     ctx.fillRect(0, 0, width, height);
@@ -267,6 +283,7 @@ function render() {
     player.render();
 
     terrain.renderUpper();
+    terrain.renderTowers();
 
     for(const id in others)
         others[id].renderUpper();
@@ -283,7 +300,16 @@ function render() {
 
 function setupEvents()
 {
-    addEventListener("keydown", e => keys[e.key] = true);
+    addEventListener("keydown", e => {
+        keys[e.key] = true;
+        if(e.key === "Enter" && $(".chat").style.display === "flex") {
+            const input = $(".chat .text");
+            const text = input.value.slice(0, 50);
+            input.value = "";
+            player.textBox.setTexts([text]);
+            $(".chat").style.display = "none";
+        }
+    });
     addEventListener("keyup", e => keys[e.key] = false);
 
     addEventListener("touchstart", e => {

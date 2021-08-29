@@ -5,7 +5,7 @@ class Other extends SpriteAnim
         this.pos = pos;
         this.leftFacing = false;
         this.name = "";
-        this.nameColor = "white";
+        this.team = "";
 
         this.textBox = new TextBox();
     }
@@ -28,9 +28,9 @@ class Other extends SpriteAnim
         ctx.translate(...this.pos);
         ctx.translate(0, adapt(-50));
         this.textBox.render();
-        ctx.translate(0, this.dims.y / 2 + adapt(80));
+        ctx.translate(0, this.dims.y / 2 + adapt(70));
         ctx.textAlign = "center";
-        ctx.fillStyle = this.nameColor;
+        ctx.fillStyle = this.team;
         ctx.font = `${adapt(18)}px Arial`;
         ctx.fillText(this.name, 0, 0);
         ctx.restore();

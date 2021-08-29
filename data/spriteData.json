@@ -21,5 +21,8 @@
     "upper_top_tree_2": [ 1, 0 ],
     "upper_bottom_tree_2": [ 1, 1 ],
     "upper_top_tree_3": [ 2, 0 ],
-    "upper_bottom_tree_3": [ 2, 1 ]
+    "upper_bottom_tree_3": [ 2, 1 ],
+    "red_tower": [ 0, 0 ],
+    "yellow_tower": [ 0, 1 ],
+    "blue_tower": [ 0, 2 ]
 }

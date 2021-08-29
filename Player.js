@@ -5,7 +5,8 @@ class Player extends SpriteAnim
         this.pos = pos.copy();
         this.leftFacing = false;
         this.name = "";
-        this.nameColor = "white";
+        this.team = "";
+        this.healthBar = new HealthBar(50, 1);
 
         this.textBox = new TextBox(["Hello, world!"]);
 
@@ -27,10 +28,10 @@ class Player extends SpriteAnim
         this.textBox.update();
 
         const movement = new Vec2();
-        if(keys["w"]) movement.y -= 1;
-        if(keys["a"]) movement.x -= 1;
-        if(keys["s"]) movement.y += 1;
-        if(keys["d"]) movement.x += 1;
+        if(keys["ArrowUp"]) movement.y -= 1;
+        if(keys["ArrowLeft"]) movement.x -= 1;
+        if(keys["ArrowDown"]) movement.y += 1;
+        if(keys["ArrowRight"]) movement.x += 1;
 
         const vel = (movement.dist() ? movement : joystick.dir()).normalize().mult(adapt(4));
 
@@ -49,6 +50,7 @@ class Player extends SpriteAnim
                     for(let b = -1; b <= 1; ++b)
                         positions.push([ a + j, b + i ]);
 
+                const futureCollider = this.getCollider(...option);
                 let obstacle = false;
                 
                 for(const [ j, i ] of positions) {
@@ -63,7 +65,7 @@ class Player extends SpriteAnim
                                 const data = [...component];
                                 data[0] += j; data[1] += i;
             
-                                if(collided(...this.getCollider(...option), ...data.map(val => val * TILE_WIDTH))) {
+                                if(collided(...futureCollider, ...data.map(val => val * TILE_WIDTH))) {
                                     obstacle = true;
                                     break;
                                 }
@@ -71,6 +73,12 @@ class Player extends SpriteAnim
                         }
     
                         if(obstacle) break;
+                    }
+                }
+                for(const type in terrain.towers) {
+                    if(collided(...futureCollider, ...terrain.towers[type].getCollider())) {
+                        obstacle = true;
+                        break;
                     }
                 }
                 if(!obstacle) {
@@ -86,6 +94,10 @@ class Player extends SpriteAnim
     getCollider(offX = 0, offY = 0) {
         return [this.pos.x + offX + this.dims.x / 4 - this.dims.x / 2, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2, this.dims.x / 2, this.dims.y / 3];
     }
+    
+    getFullCollider() {
+        return [this.pos.x + adapt(10) + this.dims.x / 4 - this.dims.x / 2, this.pos.y, this.dims.x / 2 - adapt(20), this.dims.y / 2];
+    }
 
     getColliderOrigin(offX = 0, offY = 0) {
         return [ this.pos.x + offX, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2 + this.dims.y / 6 ];
@@ -96,9 +108,6 @@ class Player extends SpriteAnim
         ctx.translate(...this.dims.copy().modify(val => -val / 2));
         ctx.drawImage(textures.player, ...SpriteAnim.getCoords(this.animIndex + 4 * this.leftFacing, this.spriteOff, 24), ...this.pos, ...this.dims);
         ctx.restore();
-        
-        // ctx.strokeStyle = "red";
-        // ctx.strokeRect(...this.getCollider());
     }
     
     renderUpper() {
@@ -106,11 +115,13 @@ class Player extends SpriteAnim
         ctx.translate(...this.pos);
         ctx.translate(0, adapt(-50));
         this.textBox.render(); // textbox
-        ctx.translate(0, this.dims.y / 2 + adapt(80));
+        ctx.translate(0, this.dims.y / 2 + adapt(70));
         ctx.textAlign = "center";
-        ctx.fillStyle = this.nameColor;
+        ctx.fillStyle = this.team;
         ctx.font = `${adapt(18)}px Arial`;
         ctx.fillText(this.name, 0, 0); // name
+        ctx.translate(0, adapt(10));
+        this.healthBar.render();
         ctx.restore();
     }
 }

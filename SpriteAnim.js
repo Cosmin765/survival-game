@@ -27,7 +27,8 @@ class SpriteAnim
         }
     }
 
-    static getCoords(i, j, w) {
-        return [ i * w, j * w, w, w ];   
+    static getCoords(j, i, w, h) {
+        if(!h) h = w;
+        return [ j * w, i * h, w, h ];   
     }
 }

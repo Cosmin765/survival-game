@@ -5,20 +5,42 @@ class Terrain
         this.decorations = decorations;
         this.layers = { map, decorations };
         this.upperLayer = this.calculateUpperLayer();
-        
-        if(socket) {
-            socket.emit("getTerrain");
-            socket.on("terrain", terrain => {
-                this.map = terrain.map;
-                this.decorations = terrain.decorations;
-                this.layers = terrain;
-                this.upperLayer = this.calculateUpperLayer();
+        this.towers = {}; // the keys are the team names
+    }
+
+    getFromServer() {
+        socket.emit("getTerrain");
+        socket.on("terrain", terrain => {
+            this.map = terrain.map;
+            this.decorations = terrain.decorations;
+            this.layers = terrain;
+            this.upperLayer = this.calculateUpperLayer();
+
+            { // towers
+                const [ i, j ] = [ this.map.length, this.map[0].length ];
+                const tower_positions = [
+                    [ j / 2, 1 ],
+                    [ 1, i - 2 ],
+                    [ j - 2, i - 2 ]
+                ];
+                const types = [ "red", "yellow", "blue" ];
     
-                const pos = new Vec2(...this.getEmptySpot()).modify(val => val * TILE_WIDTH);
-                pos.x += TILE_WIDTH / 2;
-                player.pos = pos;
-            });
-        }
+                for(let i = 0; i < types.length; ++i) {
+                    const type = types[i];
+                    this.towers[type] = new Tower(new Vec2(...tower_positions[i]).mult(TILE_WIDTH), type);
+                }
+            }
+            
+            player.pos = this.towers[player.team].pos.copy().add(new Vec2(TILE_WIDTH, 0));
+            setInterval(() => {
+                const dist = adapt(400);
+                for(const type in this.towers) {
+                    if(this.towers[type].pos.copy().sub(player.pos).dist() > dist) continue;
+                    const tower = this.towers[type];
+                    tower.fireBalls.push(new Fireball(tower.pos, new Vec2(...player.getColliderOrigin()), tower.color));
+                }
+            }, 1000);
+        });
     }
 
     calculateUpperLayer() {
@@ -44,6 +66,11 @@ class Terrain
         return upperLayer;
     }
 
+    update() {
+        for(const type in this.towers)
+            this.towers[type].update();
+    }
+
     render() {
         const view = player.pos.copy().sub(CENTER);
         const len1 = this.map.length;
@@ -55,15 +82,20 @@ class Terrain
                 if(!collided(x, y, TILE_WIDTH, TILE_WIDTH, view.x, view.y, width, height)) // checking if the tile is within the view
                     continue;
                     
-                    for(const layer in this.layers) {
-                        const value = this.layers[layer][i][j];
-                        if(value === null) continue;
-                        const offset = spriteData[idToKey[value]];
-                        ctx.drawImage(textures[layer], ...SpriteAnim.getCoords(...offset, 16), x, y, TILE_WIDTH, TILE_WIDTH);
-                    }
+                for(const layer in this.layers) {
+                    const value = this.layers[layer][i][j];
+                    if(value === null) continue;
+                    const offset = spriteData[idToKey[value]];
+                    ctx.drawImage(textures[layer], ...SpriteAnim.getCoords(...offset, 16), x, y, TILE_WIDTH, TILE_WIDTH);
                 }
             }
         }
+    }
+    
+    renderTowers() {
+        for(const type in this.towers)
+            this.towers[type].render();
+    }
         
     renderUpper() { // to render things above the player ( i know it's dumb, but whatever )
         const view = player.pos.copy().sub(CENTER);
@@ -82,9 +114,9 @@ class Terrain
         return j >= 0 && j < this.map[0].length && i >= 0 && i < this.map.length;
     }
 
-    getEmptySpot() {
-        for(let i = 1; i < this.map.length; ++i) {
-            for(let j = 1; j < this.map[i].length; ++j) {
+    getEmptySpot(offX = 1, offY = 1) {
+        for(let i = offY; i < this.map.length; ++i) {
+            for(let j = offX; j < this.map[i].length; ++j) {
                 let possible = true;
                 for(const layer in this.layers) {
                     if(colliders[idToKey[this.layers[layer][i][j]]]) {
