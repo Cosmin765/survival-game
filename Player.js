@@ -17,7 +17,8 @@ class Player extends SpriteAnim
                     leftFacing: this.leftFacing,
                     spriteOff: this.spriteOff,
                     texts: this.textBox.visible ? this.textBox.texts : [], // no point in sending the texts if they are not visible
-                    name: this.name
+                    name: this.name,
+                    health: this.healthBar.curr
                 });
             }
         }, 1000 / 30);

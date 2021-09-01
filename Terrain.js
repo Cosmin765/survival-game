@@ -32,14 +32,15 @@ class Terrain
             }
             
             player.pos = this.towers[player.team].pos.copy().add(new Vec2(TILE_WIDTH, 0));
-            setInterval(() => {
-                const dist = adapt(400);
-                for(const type in this.towers) {
-                    if(this.towers[type].pos.copy().sub(player.pos).dist() > dist) continue;
-                    const tower = this.towers[type];
-                    tower.fireBalls.push(new Fireball(tower.pos, new Vec2(...player.getColliderOrigin()), tower.color));
-                }
-            }, 1000);
+        });
+
+        socket.on("fire", targetIDs => {
+            for(const type in targetIDs) {
+                const tower = this.towers[type];
+                const id = targetIDs[type];
+                if(!(id in entities)) continue;
+                tower.fireBalls.push(new Fireball(tower.pos, entities[id], tower.color));
+            }
         });
     }
 

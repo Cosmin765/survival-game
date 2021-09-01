@@ -8,9 +8,9 @@ class HealthBar
         this.dead = false;
     }
 
-    set(percentage)
+    set(amount)
     {
-        this.curr = this.max * percentage;
+        this.curr = amount;
         if(this.curr > 0) this.dead = false;
     }
 

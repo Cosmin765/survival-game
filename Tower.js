@@ -9,10 +9,10 @@ class Tower
     }
 
     update() {
-        const playerCollider = player.getFullCollider();
         for(let i = 0; i < this.fireBalls.length; ++i) {
-            if(collided(...playerCollider, ...this.fireBalls[i].getCollider())) {
-                player.healthBar.decrease(4);
+            const entity = this.fireBalls[i].targetEntity;
+            if(collided(...entity.getFullCollider(), ...this.fireBalls[i].getCollider())) {
+                entity.healthBar.decrease(4);
                 this.fireBalls.splice(i, 1);
                 i--; continue;
             }

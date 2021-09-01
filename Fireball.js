@@ -1,11 +1,13 @@
 class Fireball
 {
-    constructor(pos, target, color) {
+    constructor(pos, targetEntity, color) {
         this.pos = pos.copy();
-        this.vel = target.copy().sub(this.pos).normalize().mult(adapt(4));
+        this.speed = adapt(4);
+        this.targetEntity = targetEntity;
+        this.vel = new Vec2(...targetEntity.getColliderOrigin()).sub(this.pos).normalize().mult(this.speed);
         this.color = color;
         this.r = adapt(10);
-        this.lifeSpan = 100;
+        this.lifeSpan = adapt(4) * 100 / this.speed; // the lifespan is independent of speed
     }
 
     update() {

@@ -96,6 +96,51 @@ class Vec2
         yield this.x; yield this.y;
     }
 };
+class HealthBar
+{
+    constructor(max, curr = 1)
+    {
+        this.max = max;
+        this.curr = max * curr;
+        this.len = adapt(100);
+        this.dead = false;
+    }
+
+    set(percentage)
+    {
+        this.curr = this.max * percentage;
+        if(this.curr > 0) this.dead = false;
+    }
+
+    decrease(amount)
+    {
+        this.curr -= amount;
+        if(this.curr <= 0) {
+            this.curr = 0;
+            this.dead = true;
+        }
+    }
+
+    increase(amount)
+    {
+        this.curr += amount;
+        if(this.curr > this.max) this.curr = this.max;
+    }
+
+    render()
+    {
+        ctx.save();
+        ctx.fillStyle = "white";
+        ctx.strokeStyle = "black";
+        ctx.lineWidth = adapt(2);
+        ctx.translate(-this.len / 2, 0);
+        ctx.fillRect(0, 0, this.len, adapt(7));
+        ctx.fillStyle = "lightgreen";
+        ctx.fillRect(0, 0, adapt(this.curr / this.max * this.len), adapt(7));
+        ctx.strokeRect(0, 0, this.len, adapt(7));
+        ctx.restore();
+    }
+}
 class SpriteAnim
 {
     constructor(dims, frameCount) {
@@ -125,8 +170,9 @@ class SpriteAnim
         }
     }
 
-    static getCoords(i, j, w) {
-        return [ i * w, j * w, w, w ];   
+    static getCoords(j, i, w, h) {
+        if(!h) h = w;
+        return [ j * w, i * h, w, h ];   
     }
 }
 class Interactive
@@ -197,6 +243,79 @@ class ActionButton extends Interactive
         ctx.fillText(this.text, ...this.pos.copy().add(new Vec2(-textWidth / 2, adapt(10))));
     }
 }
+class Fireball
+{
+    constructor(pos, target, color) {
+        this.pos = pos.copy();
+        this.vel = target.copy().sub(this.pos).normalize().mult(adapt(4));
+        this.color = color;
+        this.r = adapt(10);
+        this.lifeSpan = 100;
+    }
+
+    update() {
+        this.pos.add(this.vel);
+        this.lifeSpan--;
+    }
+
+    render() {
+        ctx.save();
+        ctx.translate(...this.pos);
+        ctx.beginPath();
+        ctx.arc(0, 0, this.r, 0, 2 * Math.PI);
+        ctx.fillStyle = this.color;
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.restore();
+    }
+
+    getCollider() {
+        return [ ...this.pos, 2 * this.r, 2 * this.r ];
+    }
+}
+class Tower
+{
+    constructor(pos, color) {
+        this.pos = pos.copy();
+        this.color = color;
+        this.type = color + "_tower";
+        this.dims = new Vec2(1.3, 2.6).mult(TILE_WIDTH);
+        this.fireBalls = [];
+    }
+
+    update() {
+        const playerCollider = player.getFullCollider();
+        for(let i = 0; i < this.fireBalls.length; ++i) {
+            if(collided(...playerCollider, ...this.fireBalls[i].getCollider())) {
+                player.healthBar.decrease(4);
+                this.fireBalls.splice(i, 1);
+                i--; continue;
+            }
+            if(this.fireBalls[i].lifeSpan <= 0) {
+                this.fireBalls.splice(i, 1);
+                i--; continue;    
+            }
+            this.fireBalls[i].update();
+        }
+    }
+
+    render() {
+        ctx.save();
+        ctx.translate(...this.pos);
+        ctx.drawImage(textures.towers, ...SpriteAnim.getCoords(...spriteData[this.type], 32, 64), -this.dims.x / 2, -this.dims.y / 2, ...this.dims);
+        
+        ctx.restore();
+
+        for(const fireBall of this.fireBalls)
+            fireBall.render();
+    }
+
+    getCollider() {
+        const h = adapt(60);
+        return [ this.pos.x - this.dims.x / 3, this.pos.y + this.dims.y / 2 - h, this.dims.x * 2 / 3, h ];
+    }
+}
 class Terrain
 {
     constructor(map = Terrain.generateMap(), decorations = Terrain.generateDecorations()) {
@@ -204,20 +323,42 @@ class Terrain
         this.decorations = decorations;
         this.layers = { map, decorations };
         this.upperLayer = this.calculateUpperLayer();
-        
-        if(socket) {
-            socket.emit("getTerrain");
-            socket.on("terrain", terrain => {
-                this.map = terrain.map;
-                this.decorations = terrain.decorations;
-                this.layers = terrain;
-                this.upperLayer = this.calculateUpperLayer();
+        this.towers = {}; // the keys are the team names
+    }
+
+    getFromServer() {
+        socket.emit("getTerrain");
+        socket.on("terrain", terrain => {
+            this.map = terrain.map;
+            this.decorations = terrain.decorations;
+            this.layers = terrain;
+            this.upperLayer = this.calculateUpperLayer();
+
+            { // towers
+                const [ i, j ] = [ this.map.length, this.map[0].length ];
+                const tower_positions = [
+                    [ j / 2, 1 ],
+                    [ 1, i - 2 ],
+                    [ j - 2, i - 2 ]
+                ];
+                const types = [ "red", "yellow", "blue" ];
     
-                const pos = new Vec2(...this.getEmptySpot()).modify(val => val * TILE_WIDTH);
-                pos.x += TILE_WIDTH / 2;
-                player.pos = pos;
-            });
-        }
+                for(let i = 0; i < types.length; ++i) {
+                    const type = types[i];
+                    this.towers[type] = new Tower(new Vec2(...tower_positions[i]).mult(TILE_WIDTH), type);
+                }
+            }
+            
+            player.pos = this.towers[player.team].pos.copy().add(new Vec2(TILE_WIDTH, 0));
+            setInterval(() => {
+                const dist = adapt(400);
+                for(const type in this.towers) {
+                    if(this.towers[type].pos.copy().sub(player.pos).dist() > dist) continue;
+                    const tower = this.towers[type];
+                    tower.fireBalls.push(new Fireball(tower.pos, new Vec2(...player.getColliderOrigin()), tower.color));
+                }
+            }, 1000);
+        });
     }
 
     calculateUpperLayer() {
@@ -243,6 +384,11 @@ class Terrain
         return upperLayer;
     }
 
+    update() {
+        for(const type in this.towers)
+            this.towers[type].update();
+    }
+
     render() {
         const view = player.pos.copy().sub(CENTER);
         const len1 = this.map.length;
@@ -254,15 +400,20 @@ class Terrain
                 if(!collided(x, y, TILE_WIDTH, TILE_WIDTH, view.x, view.y, width, height)) // checking if the tile is within the view
                     continue;
                     
-                    for(const layer in this.layers) {
-                        const value = this.layers[layer][i][j];
-                        if(value === null) continue;
-                        const offset = spriteData[idToKey[value]];
-                        ctx.drawImage(textures[layer], ...SpriteAnim.getCoords(...offset, 16), x, y, TILE_WIDTH, TILE_WIDTH);
-                    }
+                for(const layer in this.layers) {
+                    const value = this.layers[layer][i][j];
+                    if(value === null) continue;
+                    const offset = spriteData[idToKey[value]];
+                    ctx.drawImage(textures[layer], ...SpriteAnim.getCoords(...offset, 16), x, y, TILE_WIDTH, TILE_WIDTH);
                 }
             }
         }
+    }
+    
+    renderTowers() {
+        for(const type in this.towers)
+            this.towers[type].render();
+    }
         
     renderUpper() { // to render things above the player ( i know it's dumb, but whatever )
         const view = player.pos.copy().sub(CENTER);
@@ -281,9 +432,9 @@ class Terrain
         return j >= 0 && j < this.map[0].length && i >= 0 && i < this.map.length;
     }
 
-    getEmptySpot() {
-        for(let i = 1; i < this.map.length; ++i) {
-            for(let j = 1; j < this.map[i].length; ++j) {
+    getEmptySpot(offX = 1, offY = 1) {
+        for(let i = offY; i < this.map.length; ++i) {
+            for(let j = offX; j < this.map[i].length; ++j) {
                 let possible = true;
                 for(const layer in this.layers) {
                     if(colliders[idToKey[this.layers[layer][i][j]]]) {
@@ -507,7 +658,8 @@ class Player extends SpriteAnim
         this.pos = pos.copy();
         this.leftFacing = false;
         this.name = "";
-        this.nameColor = "white";
+        this.team = "";
+        this.healthBar = new HealthBar(50, 1);
 
         this.textBox = new TextBox(["Hello, world!"]);
 
@@ -529,10 +681,10 @@ class Player extends SpriteAnim
         this.textBox.update();
 
         const movement = new Vec2();
-        if(keys["w"]) movement.y -= 1;
-        if(keys["a"]) movement.x -= 1;
-        if(keys["s"]) movement.y += 1;
-        if(keys["d"]) movement.x += 1;
+        if(keys["ArrowUp"]) movement.y -= 1;
+        if(keys["ArrowLeft"]) movement.x -= 1;
+        if(keys["ArrowDown"]) movement.y += 1;
+        if(keys["ArrowRight"]) movement.x += 1;
 
         const vel = (movement.dist() ? movement : joystick.dir()).normalize().mult(adapt(4));
 
@@ -551,6 +703,7 @@ class Player extends SpriteAnim
                     for(let b = -1; b <= 1; ++b)
                         positions.push([ a + j, b + i ]);
 
+                const futureCollider = this.getCollider(...option);
                 let obstacle = false;
                 
                 for(const [ j, i ] of positions) {
@@ -565,7 +718,7 @@ class Player extends SpriteAnim
                                 const data = [...component];
                                 data[0] += j; data[1] += i;
             
-                                if(collided(...this.getCollider(...option), ...data.map(val => val * TILE_WIDTH))) {
+                                if(collided(...futureCollider, ...data.map(val => val * TILE_WIDTH))) {
                                     obstacle = true;
                                     break;
                                 }
@@ -573,6 +726,12 @@ class Player extends SpriteAnim
                         }
     
                         if(obstacle) break;
+                    }
+                }
+                for(const type in terrain.towers) {
+                    if(collided(...futureCollider, ...terrain.towers[type].getCollider())) {
+                        obstacle = true;
+                        break;
                     }
                 }
                 if(!obstacle) {
@@ -588,6 +747,10 @@ class Player extends SpriteAnim
     getCollider(offX = 0, offY = 0) {
         return [this.pos.x + offX + this.dims.x / 4 - this.dims.x / 2, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2, this.dims.x / 2, this.dims.y / 3];
     }
+    
+    getFullCollider() {
+        return [this.pos.x + adapt(10) + this.dims.x / 4 - this.dims.x / 2, this.pos.y, this.dims.x / 2 - adapt(20), this.dims.y / 2];
+    }
 
     getColliderOrigin(offX = 0, offY = 0) {
         return [ this.pos.x + offX, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2 + this.dims.y / 6 ];
@@ -598,9 +761,6 @@ class Player extends SpriteAnim
         ctx.translate(...this.dims.copy().modify(val => -val / 2));
         ctx.drawImage(textures.player, ...SpriteAnim.getCoords(this.animIndex + 4 * this.leftFacing, this.spriteOff, 24), ...this.pos, ...this.dims);
         ctx.restore();
-        
-        // ctx.strokeStyle = "red";
-        // ctx.strokeRect(...this.getCollider());
     }
     
     renderUpper() {
@@ -608,11 +768,13 @@ class Player extends SpriteAnim
         ctx.translate(...this.pos);
         ctx.translate(0, adapt(-50));
         this.textBox.render(); // textbox
-        ctx.translate(0, this.dims.y / 2 + adapt(80));
+        ctx.translate(0, this.dims.y / 2 + adapt(70));
         ctx.textAlign = "center";
-        ctx.fillStyle = this.nameColor;
+        ctx.fillStyle = this.team;
         ctx.font = `${adapt(18)}px Arial`;
         ctx.fillText(this.name, 0, 0); // name
+        ctx.translate(0, adapt(10));
+        this.healthBar.render();
         ctx.restore();
     }
 }
@@ -623,7 +785,7 @@ class Other extends SpriteAnim
         this.pos = pos;
         this.leftFacing = false;
         this.name = "";
-        this.nameColor = "white";
+        this.team = "";
 
         this.textBox = new TextBox();
     }
@@ -646,9 +808,9 @@ class Other extends SpriteAnim
         ctx.translate(...this.pos);
         ctx.translate(0, adapt(-50));
         this.textBox.render();
-        ctx.translate(0, this.dims.y / 2 + adapt(80));
+        ctx.translate(0, this.dims.y / 2 + adapt(70));
         ctx.textAlign = "center";
-        ctx.fillStyle = this.nameColor;
+        ctx.fillStyle = this.team;
         ctx.font = `${adapt(18)}px Arial`;
         ctx.fillText(this.name, 0, 0);
         ctx.restore();
@@ -722,6 +884,8 @@ class Joystick extends Interactive
 };
 window.onload = main;
 const MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+const LOCAL = true;
+const FRAMERATE = 60;
 
 Array.prototype.equals = function(array) {
     if (!array)
@@ -832,6 +996,7 @@ async function preload() {
     textures.map = await loadImg("forest.png");
     textures.decorations = await loadImg("plainDecoration_0.png");
     textures.upperLayer = await loadImg("upperLayer.png");
+    textures.towers = await loadImg("towers.png");
 
     spriteData = await loadJSON("spriteData.json");
 
@@ -846,19 +1011,6 @@ async function main() {
     canvas = $("#c");
     ctx = canvas.getContext("2d");
 
-    $(".online").addEventListener("click", connect);
-    $(".offline").addEventListener("click", init);
-    $(".close").addEventListener("click", () => {
-        $(".connect-error").style.display = "none";
-    });
-    $("input.button").addEventListener("click", () => {
-        const input = $("input.text");
-        const text = input.value.slice(0, 50);
-        input.value = "";
-        player.textBox.setTexts([text]);
-        $(".chat").style.display = "none";
-    });
-
     canvas.width = width;
     canvas.height = height;
 
@@ -872,55 +1024,20 @@ async function main() {
     ctx.imageSmoothingEnabled = false; // self-explainatory
 
     window.CENTER = new Vec2(width / 2, height / 2); // constant that represents the center of the screen
+    
+    $(".online").addEventListener("click", connect);
+    $(".offline").addEventListener("click", init);
+    $(".close").addEventListener("click", () => $(".connect-error").style.display = "none");
+    $(".chat .button").addEventListener("click", () => {
+        const input = $(".chat .text");
+        const text = input.value.slice(0, 50);
+        input.value = "";
+        player.textBox.setTexts([text]);
+        $(".chat").style.display = "none";
+    });
+
     await preload();
-}
-
-function setLayout() {
-    $(".main-menu").style.display = "none";
-    canvas.style.display = "block";
-    $(".loader").style.display = "none";
-    $(".chat").style.width = `${(width - adapt(40)) / ratio}px`;
-    $(".name").style.display = "none";
-}
-
-function connect() {
-    $(".loader").style.display = "block";
-    socket = io.connect("http://109.98.216.123:5000");
-    
-    socket.on("connect", () => {
-        if(started) return;
-        init();
-    });
-    
-    socket.on("players", data => {
-        for(const id in data) {
-            if(id === socket.id) continue;
-            if(!(id in others))
-                others[id] = new Other();
-            
-            others[id].pos = data[id].pos.map(adapt); // adapt for the new resolution
-            others[id].leftFacing = data[id].leftFacing;
-            others[id].spriteOff = data[id].spriteOff;
-            others[id].name = data[id].name;
-            if(others[id].name === "Cosmin")
-                others[id].nameColor = "cyan";
-            if(!data[id].texts.equals(others[id].textBox.last)) {
-                others[id].textBox.setTexts(data[id].texts);
-            }
-        }
-    });
-    
-    socket.on("connect_error", () => { // offline
-        socket.close(); // stop trying to connect
-        $(".connect-error").style.display = "flex";
-        $(".loader").style.display = "none";
-    });
-    
-    socket.on("remove", id => delete others[id]);
-}
-
-function init() {
-    setLayout();
+    $("body").style.display = "initial";
 
     { // creating a scope
         const options = {
@@ -936,10 +1053,11 @@ function init() {
                 };
                 const value = $(".chat").style.display;
                 $(".chat").style.display = opposite[value];
+                setTimeout(() => $(".chat .text").focus(), 150);
             }
         };
         buttons.chat = new ActionButton(options);
-    }
+    } // chat button
 
     {
         const options = {
@@ -951,7 +1069,7 @@ function init() {
             }
         };
         buttons.attack = new ActionButton(options);
-    }
+    } // attack button
 
     joystick = new Joystick(new Vec2(width - adapt(100), height - adapt(100)));
     terrain = new Terrain();
@@ -959,6 +1077,55 @@ function init() {
     const pos = new Vec2(...terrain.getEmptySpot()).modify(val => val * TILE_WIDTH);
     pos.x += TILE_WIDTH / 2;
     player = new Player(pos);
+}
+
+function connect() {
+    $(".loader").style.display = "block";
+    socket = io.connect(LOCAL ? "http://192.168.1.6:5000" : "http://109.98.216.123:5000");
+    
+    socket.on("connect", () => {
+        if(started) return;
+        terrain.getFromServer();
+        init();
+    });
+    
+    socket.on("players", data => {
+        for(const id in data) {
+            if(id === socket.id) continue;
+            if(!(id in others))
+                others[id] = new Other();
+            
+            others[id].pos = data[id].pos.map(adapt); // adapt for the new resolution
+            others[id].leftFacing = data[id].leftFacing;
+            others[id].spriteOff = data[id].spriteOff;
+            others[id].team = data[id].team;
+            others[id].name = data[id].name;
+            if(!data[id].texts.equals(others[id].textBox.last)) {
+                others[id].textBox.setTexts(data[id].texts);
+            }
+        }
+    });
+
+    socket.on("team", team => {
+        player.team = team;
+    });
+    
+    socket.on("connect_error", () => { // offline
+        socket.close(); // stop trying to connect
+        $(".connect-error").style.display = "flex";
+        $(".loader").style.display = "none";
+    });
+    
+    socket.on("remove", id => delete others[id]);
+}
+
+function init() {
+    $(".main-menu").style.display = "none";
+    canvas.style.display = "block";
+    $(".loader").style.display = "none";
+    $(".chat").style.width = `${(width - adapt(40)) / ratio}px`;
+    $(".name").style.display = "none";
+    
     player.name = $(".name input").value.slice(0, 20) || "Anonymous";
     if(player.name === "Cosmin") player.nameColor = "cyan";
     started = true;
@@ -968,13 +1135,25 @@ function init() {
 
 function update() {
     player.update();
+    terrain.update();
 }
 
-function render() {
+let lastTime = 0;
+let timeSinceLast = 0;
+async function render(time) {
     // credit to analogstudios for the assets
     // characters are 24 x 24
     // tiles are 16 x 16
-    update();
+
+    timeSinceLast += time - lastTime;
+    const desiredTime = 1000 / FRAMERATE;
+
+    while(timeSinceLast > desiredTime) {
+        timeSinceLast -= desiredTime;
+        update();
+    }
+    lastTime = time;
+
     
     ctx.fillStyle = "rgb(85, 125, 85)";
     ctx.fillRect(0, 0, width, height);
@@ -988,6 +1167,7 @@ function render() {
     player.render();
 
     terrain.renderUpper();
+    terrain.renderTowers();
 
     for(const id in others)
         others[id].renderUpper();
@@ -1004,7 +1184,16 @@ function render() {
 
 function setupEvents()
 {
-    addEventListener("keydown", e => keys[e.key] = true);
+    addEventListener("keydown", e => {
+        keys[e.key] = true;
+        if(e.key === "Enter" && $(".chat").style.display === "flex") {
+            const input = $(".chat .text");
+            const text = input.value.slice(0, 50);
+            input.value = "";
+            player.textBox.setTexts([text]);
+            $(".chat").style.display = "none";
+        }
+    });
     addEventListener("keyup", e => keys[e.key] = false);
 
     addEventListener("touchstart", e => {

@@ -40,6 +40,7 @@ const random = (min, max) => Math.random() * (max - min) + min;
 let socket;
 
 const others = {};
+const entities = [];
 
 const TILE_WIDTH = adapt(80);
 
@@ -201,6 +202,7 @@ function connect() {
     
     socket.on("connect", () => {
         if(started) return;
+        entities[socket.id] = player;
         terrain.getFromServer();
         init();
     });
@@ -208,14 +210,17 @@ function connect() {
     socket.on("players", data => {
         for(const id in data) {
             if(id === socket.id) continue;
-            if(!(id in others))
+            if(!(id in others)) {
                 others[id] = new Other();
+                entities[id] = others[id];
+            }
             
-            others[id].pos = data[id].pos.map(adapt); // adapt for the new resolution
+            others[id].pos = new Vec2(...data[id].pos.map(adapt)); // adapt for the new resolution
             others[id].leftFacing = data[id].leftFacing;
             others[id].spriteOff = data[id].spriteOff;
             others[id].team = data[id].team;
             others[id].name = data[id].name;
+            others[id].healthBar.set(data[id].health);
             if(!data[id].texts.equals(others[id].textBox.last)) {
                 others[id].textBox.setTexts(data[id].texts);
             }
@@ -232,7 +237,10 @@ function connect() {
         $(".loader").style.display = "none";
     });
     
-    socket.on("remove", id => delete others[id]);
+    socket.on("remove", id => {
+        delete others[id];
+        delete entities[id];
+    });
 }
 
 function init() {

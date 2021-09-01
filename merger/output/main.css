@@ -3,6 +3,7 @@ body {
     position: fixed;
     background-color: black;
     overscroll-behavior-y: none;
+    display: none;
 }
 
 #c {

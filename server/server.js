@@ -1,5 +1,7 @@
 const io = require("socket.io")(5000, { cors: { origin: "*" } });
 
+const TILE_WIDTH = 80;
+
 const spriteData = require("./../data/spriteData.json");
 const keyToId = {}, idToKey = [];
 
@@ -7,6 +9,8 @@ for(const key in spriteData) {
     keyToId[key] = idToKey.length;
     idToKey.push(key);
 } // aliases for the sprites
+
+const getDist = (x1, y1, x2, y2) => Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
 
 const random = (min, max) => Math.random() * (max - min) + min;
 
@@ -33,7 +37,7 @@ class Terrain
     static generateDecorations(i = Terrain.DEFAULT_I, j = Terrain.DEFAULT_J) {
         const decorations = Array(i).fill(0).map(_ => Array(j).fill(null));
         
-        const treeCount = i * j / 10 | 0;
+        const treeCount = i * j / 10 | 0 + 10000;
         const stoneCount = i * j / 20 | 0;
 
         const generators = [
@@ -53,7 +57,7 @@ class Terrain
         const treeName = [ "_tree_1", "_tree_2", "_tree_3" ][random(0, 3) | 0];
         
         const [ i, j ] = Terrain.getRandCoord(container.length, container[0].length);
-        if(Terrain.reserved(container, j, i)) return;
+        if(Terrain.reserved(container, i, j) || Terrain.reserved(container, i - 1, j)) return;
         
         if(container[i][j] !== null || container[i - 1][j] !== null)
             return;
@@ -77,7 +81,7 @@ class Terrain
         return [ random(1, i - 1) | 0, random(1, j - 1) | 0 ];
     }
     
-    static reserved(container, pos_j, pos_i) {
+    static reserved(container, pos_i, pos_j) {
         let towers_positions = [];
         {
             const [ i, j ] = [ container.length, container[0].length ];
@@ -91,7 +95,7 @@ class Terrain
         const r = 3;
 
         for(const [ j, i ] of towers_positions) {
-            if(Math.sqrt(Math.pow(pos_j - i, 2) + Math.pow(pos_i - j, 2)) <= r) return true;
+            if(Math.sqrt(Math.pow(pos_i - i, 2) + Math.pow(pos_j - j, 2)) <= r) return true;
         }
         return false;
     }
@@ -109,7 +113,6 @@ class PlayerManager
             blue: []
         };
         this.teams = [ "red", "yellow", "blue" ];
-        // this.teamIndex = 0;
         this.count = 0;
     }
 
@@ -122,8 +125,6 @@ class PlayerManager
         }
         lengths.sort();
         const team = lenToTeam[lengths[0]];
-        // const team = this.teams[this.teamIndex++];
-        // this.teamIndex %= this.teams.length;
         this.count++;
         this.teamsData[team].push(id);
         return team;
@@ -133,7 +134,6 @@ class PlayerManager
         const team = playersData[id].team;
         const index = this.teamsData[team].indexOf(id);
         this.teamsData[team].splice(index, 1);
-        // this.teamIndex = (this.teamIndex + this.teams.length - 1) % this.teams.length;
         this.count--;
     }
 
@@ -187,3 +187,43 @@ io.on('connection', socket => {
 });
 
 setInterval(() => io.emit("players", playersData), 1000 / 30);
+
+setInterval(() => {
+    const treshold = 400; // no need for adapt on the server side
+    const towersData = {};
+    {
+        const [ i, j ] = size;
+        const towersPositions = [
+            [ j / 2, 1 ],
+            [ 1, i - 2 ],
+            [ j - 2, i - 2 ]
+        ].map(pos => pos.map(val => val * TILE_WIDTH));
+        const types = [ "red", "yellow", "blue" ];
+        for(let i = 0; i < 3; ++i) {
+            towersData[types[i]] = towersPositions[i];
+        }
+    }
+    
+    
+    const targetIDs = {};
+    for(const type in towersData) {
+        let smallest = Infinity;
+        let targetEntityID = null;
+        for(const id in playersData) {
+            if(playerManager.teamsData[type].includes(id)) continue;
+            const dist = getDist(...towersData[type], ...playersData[id].pos);
+            if(dist > treshold) continue;
+
+            if(dist < smallest) {
+                smallest = dist;
+                targetEntityID = id;
+            }
+        }
+
+        if(targetEntityID) {
+            targetIDs[type] = targetEntityID;
+        }
+    }
+
+    io.emit("fire", targetIDs);
+}, 1000);

@@ -6,7 +6,7 @@ lines = html.readlines()
 html.close()
 
 script_start = 13
-script_end = 23 # not inclusive
+script_end = 26 # not inclusive
 
 script_lines = lines[script_start : script_end]
 
