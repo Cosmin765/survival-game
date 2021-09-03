@@ -1,7 +1,7 @@
 window.onload = main;
 const MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
 const LOCAL = true;
-const FRAMERATE = 60;
+const FRAMERATE = 60; // not really framerate, more like "update rate", so that the gameplay doesn't feel slow for weaker devices
 
 Array.prototype.equals = function(array) {
     if (!array)
@@ -36,11 +36,13 @@ const unadapt = val => val * 450 / width;
 const wait = amount => new Promise(resolve => setTimeout(resolve, amount));
 const collided = (x1, y1, w1, h1, x2, y2, w2, h2) => x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2; // checks if 2 rectangles are colliding with the specified values
 const random = (min, max) => Math.random() * (max - min) + min;
+const map = (x, a, b, c, d) => (x - a) / (b - a) * (d - c) + c;
 
 let socket;
 
 const others = {};
-const entities = [];
+const entities = {};
+const panels = [];
 
 const TILE_WIDTH = adapt(80);
 
@@ -48,7 +50,9 @@ const textures = {
     player: null,
     map: null,
     decorations: null,
-    upperLayer: null
+    upperLayer: null,
+    towers: null,
+    sword: null
 };
 
 const spriteOffset = { // y offsets for animations
@@ -114,6 +118,7 @@ async function preload() {
     textures.decorations = await loadImg("plainDecoration_0.png");
     textures.upperLayer = await loadImg("upperLayer.png");
     textures.towers = await loadImg("towers.png");
+    textures.sword = await loadImg("sword.png");
 
     spriteData = await loadJSON("spriteData.json");
 
@@ -145,7 +150,7 @@ async function main() {
     $(".online").addEventListener("click", connect);
     $(".offline").addEventListener("click", init);
     $(".close").addEventListener("click", () => $(".connect-error").style.display = "none");
-    $(".chat .button").addEventListener("click", () => {
+    $(".chat .button").addEventListener("click", () => { // the send button
         const input = $(".chat .text");
         const text = input.value.slice(0, 50);
         input.value = "";
@@ -156,7 +161,7 @@ async function main() {
     await preload();
     $("body").style.display = "initial";
 
-    { // creating a scope
+    {
         const options = {
             text: "Chat",
             size: new Vec2(50, 50).modify(adapt),
@@ -170,7 +175,7 @@ async function main() {
                 };
                 const value = $(".chat").style.display;
                 $(".chat").style.display = opposite[value];
-                setTimeout(() => $(".chat .text").focus(), 150);
+                wait(150).then(() => $(".chat .text").focus());
             }
         };
         buttons.chat = new ActionButton(options);
@@ -182,7 +187,7 @@ async function main() {
             size: new Vec2(100, 50).modify(adapt),
             pos: new Vec2(adapt(50 + 50), height - adapt(25 + 100)),
             handler: () => {
-                player.setAnim("attack", false, 3);
+                player.sword.attack();
             }
         };
         buttons.attack = new ActionButton(options);
@@ -194,6 +199,13 @@ async function main() {
     const pos = new Vec2(...terrain.getEmptySpot()).modify(val => val * TILE_WIDTH);
     pos.x += TILE_WIDTH / 2;
     player = new Player(pos);
+
+    {
+        const dims = new Vec2(160, 50).modify(adapt);
+        const pos = new Vec2(width - dims.x / 2, dims.y / 2);
+        const panel = new Panel(pos, dims, () => `Money: $${player.money}`);
+        panels.push(panel);
+    }
 }
 
 function connect() {
@@ -221,15 +233,14 @@ function connect() {
             others[id].team = data[id].team;
             others[id].name = data[id].name;
             others[id].healthBar.set(data[id].health);
+            if(data[id].attacking) others[id].sword.attack();
             if(!data[id].texts.equals(others[id].textBox.last)) {
                 others[id].textBox.setTexts(data[id].texts);
             }
         }
     });
 
-    socket.on("team", team => {
-        player.team = team;
-    });
+    socket.on("team", team => player.team = team);
     
     socket.on("connect_error", () => { // offline
         socket.close(); // stop trying to connect
@@ -259,12 +270,14 @@ function init() {
 
 function update() {
     player.update();
+    for(const id in others)
+        others[id].update();
     terrain.update();
 }
 
 let lastTime = 0;
 let timeSinceLast = 0;
-async function render(time) {
+function render(time) {
     // credit to analogstudios for the assets
     // characters are 24 x 24
     // tiles are 16 x 16
@@ -303,12 +316,16 @@ async function render(time) {
         buttons[key].render();
     joystick.render();
 
+    for(const panel of panels)
+        panel.render();
+
     requestAnimationFrame(render);
 }
 
 function setupEvents()
 {
     addEventListener("keydown", e => {
+        if(e.key === "a") buttons.attack.handler();
         keys[e.key] = true;
         if(e.key === "Enter" && $(".chat").style.display === "flex") {
             const input = $(".chat .text");

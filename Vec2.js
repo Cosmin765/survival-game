@@ -92,7 +92,7 @@ class Vec2
         this.x = func(this.x); this.y = func(this.y); return this;
     }
     
-    [Symbol.iterator] = function*() {
+    [Symbol.iterator] = function*() { // very inefficient and I regret doing it
         yield this.x; yield this.y;
     }
 };

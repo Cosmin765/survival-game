@@ -7,18 +7,21 @@ class Player extends SpriteAnim
         this.name = "";
         this.team = "";
         this.healthBar = new HealthBar(50, 1);
+        this.money = 1000;
+        this.sword = new Sword();
 
         this.textBox = new TextBox(["Hello, world!"]);
 
         setInterval(() => {
             if(socket) {
                 socket.emit("store", {
-                    pos: [...this.pos].map(unadapt), // sending a normalized version
+                    pos: [this.pos.x, this.pos.y].map(unadapt), // sending a normalized version
                     leftFacing: this.leftFacing,
                     spriteOff: this.spriteOff,
                     texts: this.textBox.visible ? this.textBox.texts : [], // no point in sending the texts if they are not visible
                     name: this.name,
-                    health: this.healthBar.curr
+                    health: this.healthBar.curr,
+                    attacking: this.sword.attacking
                 });
             }
         }, 1000 / 30);
@@ -27,6 +30,14 @@ class Player extends SpriteAnim
     update() {
         this.updateAnim();
         this.textBox.update();
+        this.sword.update();
+
+        for(const id in others) {
+            if(others[id].hurt(this.getFullCollider())) {
+                const damage = others[id].sword.getDamage();
+                this.healthBar.decrease(damage);
+            }
+        }
 
         const movement = new Vec2();
         if(keys["ArrowUp"]) movement.y -= 1;
@@ -104,25 +115,42 @@ class Player extends SpriteAnim
         return [ this.pos.x + offX, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2 + this.dims.y / 6 ];
     }
 
+    getSwordCollider() {
+        const x = (this.leftFacing ? this.pos.x - this.sword.dims.x * 1.5 : this.pos.x + this.sword.dims.x / 2);
+        return [ x, this.pos.y, this.sword.dims.x, this.sword.dims.y / 2 ];
+    }
+
+    hurt(collider) {
+        if(!(this.sword.attacking && collided(...this.getSwordCollider(), ...collider))) return 0;
+        return this.sword.damage;
+    }
+
     render() {
         ctx.save();
-        ctx.translate(...this.dims.copy().modify(val => -val / 2));
+        ctx.translate(-this.dims.x / 2, -this.dims.y / 2);
         ctx.drawImage(textures.player, ...SpriteAnim.getCoords(this.animIndex + 4 * this.leftFacing, this.spriteOff, 24), ...this.pos, ...this.dims);
         ctx.restore();
     }
     
     renderUpper() {
         ctx.save();
-        ctx.translate(...this.pos);
+        ctx.translate(this.pos.x, this.pos.y);
         ctx.translate(0, adapt(-50));
         this.textBox.render(); // textbox
         ctx.translate(0, this.dims.y / 2 + adapt(70));
         ctx.textAlign = "center";
-        ctx.fillStyle = this.team;
+        ctx.fillStyle = this.team; // the color of the name 
         ctx.font = `${adapt(18)}px Arial`;
         ctx.fillText(this.name, 0, 0); // name
         ctx.translate(0, adapt(10));
         this.healthBar.render();
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        if(this.leftFacing) ctx.scale(-1, 1); // life hack
+        ctx.translate(this.sword.dims.x - adapt(20), 0);
+        this.sword.render();
         ctx.restore();
     }
 }
