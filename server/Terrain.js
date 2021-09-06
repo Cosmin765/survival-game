@@ -80,10 +80,10 @@ class Terrain
     }
     
     static reserved(container, pos_i, pos_j) {
-        let towers_positions = [];
+        let basePositions = [];
         {
             const [ i, j ] = [ container.length, container[0].length ];
-            towers_positions = [
+            basePositions = [
                 [ j / 2, 1 ],
                 [ 1, i - 2 ],
                 [ j - 2, i - 2 ]
@@ -92,9 +92,8 @@ class Terrain
 
         const r = 3;
 
-        for(const [ j, i ] of towers_positions) {
+        for(const [ j, i ] of basePositions)
             if(Math.sqrt(Math.pow(pos_i - i, 2) + Math.pow(pos_j - j, 2)) <= r) return true;
-        }
         return false;
     }
 };

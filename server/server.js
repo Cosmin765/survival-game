@@ -9,6 +9,11 @@ const playerManager = new PlayerManager();
 const [ map, decorations ] = [ Terrain.generateMap(), Terrain.generateDecorations() ];
 
 const playersData = {}; // the keys are the ids of the sockets
+const towersData = {
+    red: {},
+    yellow: {},
+    blue: {}
+};
 
 io.on('connection', socket => {
     const team = playerManager.add(socket.id);
@@ -24,7 +29,7 @@ io.on('connection', socket => {
         attacking: false
     };
 
-    socket.emit("team", team);
+    socket.emit("initial", { team, towersData });
 
     socket.on("store", data => {
         const nonMutable = [ "team" ];
@@ -36,12 +41,28 @@ io.on('connection', socket => {
         }
     });
 
+    socket.on("tower", data => {
+        towersData[data.type][data.id] = { pos: data.pos, ownerID: data.ownerID };
+        socket.broadcast.emit("towerSpawn", data);
+    });
+
     socket.on("getTerrain", () => socket.emit("terrain", { map, decorations }));
 
     socket.on("disconnect", () => {
         playerManager.remove(socket.id, playersData);
+        const type = playersData[socket.id].team;
+        const towersRemoveData = {
+            type,
+            ids: []
+        };
+        for(const id in towersData[type]) { // removing the towers which were spawned by the disconnected player
+            if(towersData[type][id].ownerID === socket.id){
+                towersRemoveData.ids.push(id);
+                delete towersData[team][id];
+            }
+        }
         delete playersData[socket.id]; // apparently this exists, nice
-        io.emit("remove", socket.id);
+        io.emit("remove", { id: socket.id, towersRemoveData });
     });
 });
 
@@ -49,40 +70,33 @@ setInterval(() => io.emit("players", playersData), 1000 / 30);
 
 setInterval(() => {
     const treshold = 400; // no need for adapt on the server side
-    const towersData = {};
-    {
-        const [ i, j ] = [ map.length, map[0].length ];
-        const towersPositions = [
-            [ j / 2, 1 ],
-            [ 1, i - 2 ],
-            [ j - 2, i - 2 ]
-        ].map(pos => pos.map(val => val * TILE_WIDTH));
-        const types = [ "red", "yellow", "blue" ];
-        for(let i = 0; i < 3; ++i) {
-            towersData[types[i]] = towersPositions[i];
-        }
-    }
-    
-    
-    const targetIDs = {};
+    const targetData = [];
     for(const type in towersData) {
-        let smallest = Infinity;
-        let targetEntityID = null;
-        for(const id in playersData) {
-            if(playerManager.teamsData[type].includes(id)) continue;
-            const dist = getDist(...towersData[type], ...playersData[id].pos);
-            if(dist > treshold) continue;
+        for(const towerID in towersData[type]) {
+            const towerPos = towersData[type][towerID].pos;
+            let smallest = Infinity;
+            let targetID = null;
 
-            if(dist < smallest) {
-                smallest = dist;
-                targetEntityID = id;
+            for(const entityID in playersData) {
+                if(playerManager.teamsData[type].includes(entityID)) continue;
+                const dist = getDist(...towerPos, ...playersData[entityID].pos);
+                if(dist > treshold) continue;
+
+                if(dist < smallest) {
+                    smallest = dist;
+                    targetID = entityID;
+                }
+            }
+
+            if(targetID) {
+                targetData.push({
+                    targetID,
+                    towerType: type,
+                    towerID
+                });
             }
         }
-
-        if(targetEntityID) {
-            targetIDs[type] = targetEntityID;
-        }
     }
 
-    io.emit("fire", targetIDs);
+    io.emit("fire", targetData);
 }, 1000);

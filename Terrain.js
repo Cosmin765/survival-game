@@ -5,7 +5,6 @@ class Terrain
         this.decorations = decorations;
         this.layers = { map, decorations };
         this.upperLayer = this.calculateUpperLayer();
-        this.towers = {}; // the keys are the team names
     }
 
     getFromServer() {
@@ -16,9 +15,9 @@ class Terrain
             this.layers = terrain;
             this.upperLayer = this.calculateUpperLayer();
 
-            { // towers
+            { // bases
                 const [ i, j ] = [ this.map.length, this.map[0].length ];
-                const tower_positions = [
+                const basePositions = [
                     [ j / 2, 1 ],
                     [ 1, i - 2 ],
                     [ j - 2, i - 2 ]
@@ -27,19 +26,18 @@ class Terrain
     
                 for(let i = 0; i < types.length; ++i) {
                     const type = types[i];
-                    this.towers[type] = new Tower(new Vec2(...tower_positions[i]).mult(TILE_WIDTH), type);
+                    bases[type] = new Base(new Vec2(...basePositions[i]).mult(TILE_WIDTH), type);
                 }
             }
             
-            player.pos = this.towers[player.team].pos.copy().add(new Vec2(TILE_WIDTH, 0));
+            player.pos = bases[player.team].pos.copy().add(new Vec2(TILE_WIDTH * 1.2, 0));
         });
 
-        socket.on("fire", targetIDs => {
-            for(const type in targetIDs) {
-                const tower = this.towers[type];
-                const id = targetIDs[type];
-                if(!(id in entities)) continue;
-                tower.fireBalls.push(new Fireball(tower.pos, entities[id], tower.color));
+        socket.on("fire", targetData => {
+            for(const data of targetData) {
+                if(!(data.towerID in towers[data.towerType] && data.targetID in entities)) continue;
+                const tower = towers[data.towerType][data.towerID];
+                tower.fireBalls.push(new Fireball(tower.pos, entities[data.targetID], tower.color));
             }
         });
     }
@@ -67,11 +65,6 @@ class Terrain
         return upperLayer;
     }
 
-    update() {
-        for(const type in this.towers)
-            this.towers[type].update();
-    }
-
     render() {
         const view = player.pos.copy().sub(CENTER);
         const len1 = this.map.length;
@@ -93,11 +86,6 @@ class Terrain
         }
     }
     
-    renderTowers() {
-        for(const type in this.towers)
-            this.towers[type].render();
-    }
-        
     renderUpper() { // to render things above the player ( i know it's dumb, but whatever )
         const view = player.pos.copy().sub(CENTER);
         for(const ob of this.upperLayer) {

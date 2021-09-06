@@ -87,8 +87,16 @@ class Player extends SpriteAnim
                         if(obstacle) break;
                     }
                 }
-                for(const type in terrain.towers) {
-                    if(collided(...futureCollider, ...terrain.towers[type].getCollider())) {
+                for(const type in towers) { // todo: optimize
+                    for(const id in towers[type]) {
+                        if(collided(...futureCollider, ...towers[type][id].getCollider())) {
+                            obstacle = true;
+                            break;
+                        }
+                    }
+                }
+                for(const type in bases) { // todo: optimize
+                    if(collided(...futureCollider, ...bases[type].getCollider())) {
                         obstacle = true;
                         break;
                     }

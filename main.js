@@ -37,12 +37,22 @@ const wait = amount => new Promise(resolve => setTimeout(resolve, amount));
 const collided = (x1, y1, w1, h1, x2, y2, w2, h2) => x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2; // checks if 2 rectangles are colliding with the specified values
 const random = (min, max) => Math.random() * (max - min) + min;
 const map = (x, a, b, c, d) => (x - a) / (b - a) * (d - c) + c;
+const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+}); // also stolen
 
 let socket;
 
 const others = {};
 const entities = {};
 const panels = [];
+const towers = {
+    red: {},
+    yellow: {},
+    blue: {}
+};
+const bases = {}; // the keys are the team names
 
 const TILE_WIDTH = adapt(80);
 
@@ -52,7 +62,8 @@ const textures = {
     decorations: null,
     upperLayer: null,
     towers: null,
-    sword: null
+    sword: null,
+    bases: null
 };
 
 const spriteOffset = { // y offsets for animations
@@ -119,6 +130,7 @@ async function preload() {
     textures.upperLayer = await loadImg("upperLayer.png");
     textures.towers = await loadImg("towers.png");
     textures.sword = await loadImg("sword.png");
+    textures.bases = await loadImg("bases.png");
 
     spriteData = await loadJSON("spriteData.json");
 
@@ -186,12 +198,32 @@ async function main() {
             text: "Attack",
             size: new Vec2(100, 50).modify(adapt),
             pos: new Vec2(adapt(50 + 50), height - adapt(25 + 100)),
-            handler: () => {
-                player.sword.attack();
-            }
+            handler: () => player.sword.attack()
         };
         buttons.attack = new ActionButton(options);
     } // attack button
+
+    {
+        const options = {
+            text: "Spawn",
+            size: new Vec2(100, 50).modify(adapt),
+            pos: new Vec2(adapt(50 + 50), height - adapt(25 + 200)),
+            handler: () => {
+                const pos = player.pos.copy().add(new Vec2(TILE_WIDTH, 0).mult(player.leftFacing ? -1 : 1));
+                const type = player.team;
+                const tower = new Tower(pos, type);
+                const id = uuidv4();
+                towers[type][id] = tower;
+                socket.emit("tower", {
+                    pos: [...tower.pos.modify(unadapt)],
+                    type: type,
+                    id: id,
+                    ownerID: socket.id
+                });
+            }
+        };
+        buttons.spawn = new ActionButton(options);
+    } // spawn button
 
     joystick = new Joystick(new Vec2(width - adapt(100), height - adapt(100)));
     terrain = new Terrain();
@@ -205,7 +237,7 @@ async function main() {
         const pos = new Vec2(width - dims.x / 2, dims.y / 2);
         const panel = new Panel(pos, dims, () => `Money: $${player.money}`);
         panels.push(panel);
-    }
+    } // money panel
 }
 
 function connect() {
@@ -240,7 +272,17 @@ function connect() {
         }
     });
 
-    socket.on("team", team => player.team = team);
+    const spawnTower = (pos, type, id) => towers[type][id] = new Tower(new Vec2(...pos).modify(adapt), type);
+
+    socket.on("initial", data => {
+        player.team = data.team;
+        
+        for(const type in data.towersData)
+            for(const id in data.towersData[type])
+                spawnTower(data.towersData[type][id].pos, type, id);
+    });
+
+    socket.on("towerSpawn", data => spawnTower(data.pos, data.type, data.id));
     
     socket.on("connect_error", () => { // offline
         socket.close(); // stop trying to connect
@@ -248,9 +290,13 @@ function connect() {
         $(".loader").style.display = "none";
     });
     
-    socket.on("remove", id => {
+    socket.on("remove", ({ id, towersRemoveData }) => {
         delete others[id];
         delete entities[id];
+
+        for(const id of towersRemoveData.ids) {
+            delete towers[towersRemoveData.type][id];
+        }
     });
 }
 
@@ -272,7 +318,11 @@ function update() {
     player.update();
     for(const id in others)
         others[id].update();
-    terrain.update();
+
+    for(const type in towers) {
+        for(const id in towers[type])
+            towers[type][id].update();
+    }
 }
 
 let lastTime = 0;
@@ -304,7 +354,14 @@ function render(time) {
     player.render();
 
     terrain.renderUpper();
-    terrain.renderTowers();
+
+    for(const type in bases)
+        bases[type].render();
+
+    for(const type in towers) {
+        for(const id in towers[type])
+            towers[type][id].render();
+    }
 
     for(const id in others)
         others[id].renderUpper();
@@ -326,6 +383,7 @@ function setupEvents()
 {
     addEventListener("keydown", e => {
         if(e.key === "a") buttons.attack.handler();
+        if(e.key === "s") buttons.spawn.handler();
         keys[e.key] = true;
         if(e.key === "Enter" && $(".chat").style.display === "flex") {
             const input = $(".chat .text");
