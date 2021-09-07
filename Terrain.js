@@ -42,17 +42,28 @@ class Terrain
         });
     }
 
+    relativeCollider(layer, i, j) {
+        const collider = colliders[idToKey[this.layers[layer][i][j]]];
+        if(!collider) return null;
+
+        return collider.map(component => {
+            const data = [...component];
+            data[0] += j; data[1] += i;
+            return data.map(val => val * TILE_WIDTH);
+        });
+    }
+
     calculateUpperLayer() {
         const upperLayer = [];
 
         const upperSprites = [
-            keyToId["top_tree_1"],
-            keyToId["top_tree_2"],
-            keyToId["top_tree_3"],
-            keyToId["bottom_tree_1"],
-            keyToId["bottom_tree_2"],
-            keyToId["bottom_tree_3"]
-        ];
+            "top_tree_1",
+            "top_tree_2",
+            "top_tree_3",
+            "bottom_tree_1",
+            "bottom_tree_2",
+            "bottom_tree_3"
+        ].map(key => keyToId[key]);
 
         for(let i = 0; i < this.decorations.length; ++i) {
             for(let j = 0; j < this.decorations[i].length; ++j) {

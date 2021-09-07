@@ -46,41 +46,29 @@ class Player extends SpriteAnim
         if(keys["ArrowRight"]) movement.x += 1;
 
         const vel = (movement.dist() ? movement : joystick.dir()).normalize().mult(adapt(4));
+        const positions = this.getSurroundingPositions();
 
         if(vel.dist()) {
             this.leftFacing = vel.x < 0;
             this.setAnim("running");
 
             const options = [ vel, new Vec2(vel.x, 0), new Vec2(0, vel.y) ]; // the ways we can move
-            const origin = this.getColliderOrigin();
 
             for(const option of options) {
-                const [ j, i ] = origin.map(val => val / TILE_WIDTH | 0); // the tile coords of the origin point
-
-                const positions = []; // the surrounding tiles' positions
-                for(let a = -1; a <= 1; ++a)
-                    for(let b = -1; b <= 1; ++b)
-                        positions.push([ a + j, b + i ]);
-
                 const futureCollider = this.getCollider(...option);
                 let obstacle = false;
                 
                 for(const [ j, i ] of positions) {
-                    if(!terrain.inRange(i, j))
-                        continue;
+                    if(!terrain.inRange(i, j)) continue;
                     
                     for(const layer in terrain.layers) {
-                        const collider = colliders[idToKey[terrain.layers[layer][i][j]]];
+                        const collider = terrain.relativeCollider(layer, i, j);
+                        if(!collider) continue;
         
-                        if(collider) {
-                            for(const component of collider) {
-                                const data = [...component];
-                                data[0] += j; data[1] += i;
-            
-                                if(collided(...futureCollider, ...data.map(val => val * TILE_WIDTH))) {
-                                    obstacle = true;
-                                    break;
-                                }
+                        for(const component of collider) {
+                            if(collided(...futureCollider, ...component)) {
+                                obstacle = true;
+                                break;
                             }
                         }
     
@@ -109,6 +97,43 @@ class Player extends SpriteAnim
         } else {
             this.setAnim("idle");
         }
+
+        if(this.sword.attacking) {
+            const swordCollider = this.getSwordCollider();
+            for(const [ j, i ] of positions) {
+                const collider = terrain.relativeCollider("decorations", i, j);
+                if(!collider) continue;
+    
+                for(const component of collider) {
+                    if(collided(...swordCollider, ...component)) {
+                        const name = idToKey[terrain.decorations[i][j]];
+                        if(name.includes("tree")) {
+                            terrain.decorations[i - 1][j] = null;
+                            for(let k = 0; k < terrain.upperLayer.length; ++k) {
+                                const item = terrain.upperLayer[k];
+                                if((item.i === i - 1 || item.i === i) && item.j === j) {
+                                    terrain.upperLayer.splice(k, 1); // TODO: some trees are not removed properly. also, to make a remove function in the terrain class
+                                }
+                            }
+                        }
+                        terrain.decorations[i][j] = null;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    getSurroundingPositions() {
+        const origin = this.getColliderOrigin();
+
+        const [ j, i ] = origin.map(val => val / TILE_WIDTH | 0); // the tile coords of the origin point
+
+        const positions = []; // the surrounding tiles' positions
+        for(let a = -1; a <= 1; ++a)
+            for(let b = -1; b <= 1; ++b)
+                positions.push([ a + j, b + i ]);
+        return positions;
     }
 
     getCollider(offX = 0, offY = 0) {

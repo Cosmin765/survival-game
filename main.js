@@ -78,6 +78,8 @@ const spriteOffset = { // y offsets for animations
 
 let spriteData, idToKey = [], keyToId = {}; // json data
 
+const buttonDisplay = {};
+
 const colliders = {
     "left_edge": [
         [ 0, 0, 0.1, 1 ]
@@ -179,7 +181,7 @@ async function main() {
             size: new Vec2(50, 50).modify(adapt),
             pos: new Vec2(width / 2, adapt(25)),
             fontSize: adapt(20),
-            handler: () => {
+            handler() {
                 const opposite = {
                     "": "flex", // sometimes, none in display is returned as an empty string. Why, JavaScript?... WHY?
                     "flex": "none",
@@ -190,7 +192,7 @@ async function main() {
                 wait(150).then(() => $(".chat .text").focus());
             }
         };
-        buttons.chat = new ActionButton(options);
+        buttons[options.text] = new ActionButton(options);
     } // chat button
 
     {
@@ -198,17 +200,41 @@ async function main() {
             text: "Attack",
             size: new Vec2(100, 50).modify(adapt),
             pos: new Vec2(adapt(50 + 50), height - adapt(25 + 100)),
-            handler: () => player.sword.attack()
+            handler() {
+                player.sword.attack();  
+            }
         };
-        buttons.attack = new ActionButton(options);
+        buttons[options.text] = new ActionButton(options);
     } // attack button
 
     {
         const options = {
             text: "Spawn",
             size: new Vec2(100, 50).modify(adapt),
-            pos: new Vec2(adapt(50 + 50), height - adapt(25 + 200)),
-            handler: () => {
+            pos: new Vec2(width - adapt(50 + 50), height - adapt(25 + 200)),
+            handler() {
+                for(const name in buttons) {
+                    if(name.includes("Tower"))
+                        buttonDisplay[name] = !buttonDisplay[name];
+                }
+
+                this.text = this.text === "Spawn" ? "Return" : "Spawn";
+                this.theme = this.theme === ActionButton.themes.blue ? ActionButton.themes.red : ActionButton.themes.blue;
+            }
+        };
+        buttons[options.text] = new ActionButton(options);
+    } // spawn button
+
+    {
+        const options = {
+            text: "Tower $200",
+            size: new Vec2(160, 50).modify(adapt),
+            pos: new Vec2(width - adapt(50 + 50), height - adapt(25 + 300)),
+            handler() {
+                const cost = 200;
+                if(player.money < cost) return;
+                player.money -= cost;
+
                 const pos = player.pos.copy().add(new Vec2(TILE_WIDTH, 0).mult(player.leftFacing ? -1 : 1));
                 const type = player.team;
                 const tower = new Tower(pos, type);
@@ -222,8 +248,9 @@ async function main() {
                 });
             }
         };
-        buttons.spawn = new ActionButton(options);
-    } // spawn button
+        buttons[options.text] = new ActionButton(options);
+        buttonDisplay[options.text] = false;
+    } // tower button
 
     joystick = new Joystick(new Vec2(width - adapt(100), height - adapt(100)));
     terrain = new Terrain();
@@ -382,8 +409,8 @@ function render(time) {
 function setupEvents()
 {
     addEventListener("keydown", e => {
-        if(e.key === "a") buttons.attack.handler();
-        if(e.key === "s") buttons.spawn.handler();
+        if(e.key === "a") buttons["Attack"].handler();
+        if(e.key === "s") buttons["Spawn"].handler();
         keys[e.key] = true;
         if(e.key === "Enter" && $(".chat").style.display === "flex") {
             const input = $(".chat .text");

@@ -92,7 +92,7 @@ class Vec2
         this.x = func(this.x); this.y = func(this.y); return this;
     }
     
-    [Symbol.iterator] = function*() {
+    [Symbol.iterator] = function*() { // very inefficient and I regret doing it
         yield this.x; yield this.y;
     }
 };
@@ -106,9 +106,9 @@ class HealthBar
         this.dead = false;
     }
 
-    set(percentage)
+    set(amount)
     {
-        this.curr = this.max * percentage;
+        this.curr = amount;
         if(this.curr > 0) this.dead = false;
     }
 
@@ -245,12 +245,14 @@ class ActionButton extends Interactive
 }
 class Fireball
 {
-    constructor(pos, target, color) {
+    constructor(pos, targetEntity, color) {
         this.pos = pos.copy();
-        this.vel = target.copy().sub(this.pos).normalize().mult(adapt(4));
+        this.speed = adapt(4);
+        this.targetEntity = targetEntity;
+        this.vel = new Vec2(...targetEntity.getColliderOrigin()).sub(this.pos).normalize().mult(this.speed);
         this.color = color;
         this.r = adapt(10);
-        this.lifeSpan = 100;
+        this.lifeSpan = adapt(4) * 100 / this.speed; // the lifespan is independent of speed
     }
 
     update() {
@@ -282,21 +284,30 @@ class Tower
         this.type = color + "_tower";
         this.dims = new Vec2(1.3, 2.6).mult(TILE_WIDTH);
         this.fireBalls = [];
+        this.healthBar = new HealthBar(40, 1);
     }
 
     update() {
-        const playerCollider = player.getFullCollider();
         for(let i = 0; i < this.fireBalls.length; ++i) {
-            if(collided(...playerCollider, ...this.fireBalls[i].getCollider())) {
-                player.healthBar.decrease(4);
+            this.fireBalls[i].update();
+            if(this.fireBalls[i].lifeSpan <= 0) {
                 this.fireBalls.splice(i, 1);
                 i--; continue;
             }
-            if(this.fireBalls[i].lifeSpan <= 0) {
-                this.fireBalls.splice(i, 1);
-                i--; continue;    
+            for(const id in entities) {
+                const entity = entities[id];
+                if(entity.team === this.color) continue;
+                if(collided(...entity.getFullCollider(), ...this.fireBalls[i].getCollider())) {
+                    entity.healthBar.decrease(4);
+                    this.fireBalls.splice(i, 1);
+                    i--; break;
+                }
             }
-            this.fireBalls[i].update();
+        }
+
+        if(player.hurt(this.getCollider())) {
+            const damage = player.sword.getDamage();
+            this.healthBar.decrease(damage);
         }
     }
 
@@ -305,6 +316,9 @@ class Tower
         ctx.translate(...this.pos);
         ctx.drawImage(textures.towers, ...SpriteAnim.getCoords(...spriteData[this.type], 32, 64), -this.dims.x / 2, -this.dims.y / 2, ...this.dims);
         
+        ctx.translate(0, this.dims.y / 2 + adapt(10));
+        this.healthBar.render();
+
         ctx.restore();
 
         for(const fireBall of this.fireBalls)
@@ -323,7 +337,6 @@ class Terrain
         this.decorations = decorations;
         this.layers = { map, decorations };
         this.upperLayer = this.calculateUpperLayer();
-        this.towers = {}; // the keys are the team names
     }
 
     getFromServer() {
@@ -334,9 +347,9 @@ class Terrain
             this.layers = terrain;
             this.upperLayer = this.calculateUpperLayer();
 
-            { // towers
+            { // bases
                 const [ i, j ] = [ this.map.length, this.map[0].length ];
-                const tower_positions = [
+                const basePositions = [
                     [ j / 2, 1 ],
                     [ 1, i - 2 ],
                     [ j - 2, i - 2 ]
@@ -345,19 +358,19 @@ class Terrain
     
                 for(let i = 0; i < types.length; ++i) {
                     const type = types[i];
-                    this.towers[type] = new Tower(new Vec2(...tower_positions[i]).mult(TILE_WIDTH), type);
+                    bases[type] = new Base(new Vec2(...basePositions[i]).mult(TILE_WIDTH), type);
                 }
             }
             
-            player.pos = this.towers[player.team].pos.copy().add(new Vec2(TILE_WIDTH, 0));
-            setInterval(() => {
-                const dist = adapt(400);
-                for(const type in this.towers) {
-                    if(this.towers[type].pos.copy().sub(player.pos).dist() > dist) continue;
-                    const tower = this.towers[type];
-                    tower.fireBalls.push(new Fireball(tower.pos, new Vec2(...player.getColliderOrigin()), tower.color));
-                }
-            }, 1000);
+            player.pos = bases[player.team].pos.copy().add(new Vec2(TILE_WIDTH * 1.2, 0));
+        });
+
+        socket.on("fire", targetData => {
+            for(const data of targetData) {
+                if(!(data.towerID in towers[data.towerType] && data.targetID in entities)) continue;
+                const tower = towers[data.towerType][data.towerID];
+                tower.fireBalls.push(new Fireball(tower.pos, entities[data.targetID], tower.color));
+            }
         });
     }
 
@@ -384,11 +397,6 @@ class Terrain
         return upperLayer;
     }
 
-    update() {
-        for(const type in this.towers)
-            this.towers[type].update();
-    }
-
     render() {
         const view = player.pos.copy().sub(CENTER);
         const len1 = this.map.length;
@@ -410,11 +418,6 @@ class Terrain
         }
     }
     
-    renderTowers() {
-        for(const type in this.towers)
-            this.towers[type].render();
-    }
-        
     renderUpper() { // to render things above the player ( i know it's dumb, but whatever )
         const view = player.pos.copy().sub(CENTER);
         for(const ob of this.upperLayer) {
@@ -660,17 +663,21 @@ class Player extends SpriteAnim
         this.name = "";
         this.team = "";
         this.healthBar = new HealthBar(50, 1);
+        this.money = 1000;
+        this.sword = new Sword();
 
         this.textBox = new TextBox(["Hello, world!"]);
 
         setInterval(() => {
             if(socket) {
                 socket.emit("store", {
-                    pos: [...this.pos].map(unadapt), // sending a normalized version
+                    pos: [this.pos.x, this.pos.y].map(unadapt), // sending a normalized version
                     leftFacing: this.leftFacing,
                     spriteOff: this.spriteOff,
                     texts: this.textBox.visible ? this.textBox.texts : [], // no point in sending the texts if they are not visible
-                    name: this.name
+                    name: this.name,
+                    health: this.healthBar.curr,
+                    attacking: this.sword.attacking
                 });
             }
         }, 1000 / 30);
@@ -679,6 +686,14 @@ class Player extends SpriteAnim
     update() {
         this.updateAnim();
         this.textBox.update();
+        this.sword.update();
+
+        for(const id in others) {
+            if(others[id].hurt(this.getFullCollider())) {
+                const damage = others[id].sword.getDamage();
+                this.healthBar.decrease(damage);
+            }
+        }
 
         const movement = new Vec2();
         if(keys["ArrowUp"]) movement.y -= 1;
@@ -728,8 +743,16 @@ class Player extends SpriteAnim
                         if(obstacle) break;
                     }
                 }
-                for(const type in terrain.towers) {
-                    if(collided(...futureCollider, ...terrain.towers[type].getCollider())) {
+                for(const type in towers) { // todo: optimize
+                    for(const id in towers[type]) {
+                        if(collided(...futureCollider, ...towers[type][id].getCollider())) {
+                            obstacle = true;
+                            break;
+                        }
+                    }
+                }
+                for(const type in bases) { // todo: optimize
+                    if(collided(...futureCollider, ...bases[type].getCollider())) {
                         obstacle = true;
                         break;
                     }
@@ -756,25 +779,42 @@ class Player extends SpriteAnim
         return [ this.pos.x + offX, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2 + this.dims.y / 6 ];
     }
 
+    getSwordCollider() {
+        const x = (this.leftFacing ? this.pos.x - this.sword.dims.x * 1.5 : this.pos.x + this.sword.dims.x / 2);
+        return [ x, this.pos.y, this.sword.dims.x, this.sword.dims.y / 2 ];
+    }
+
+    hurt(collider) {
+        if(!(this.sword.attacking && collided(...this.getSwordCollider(), ...collider))) return 0;
+        return this.sword.damage;
+    }
+
     render() {
         ctx.save();
-        ctx.translate(...this.dims.copy().modify(val => -val / 2));
+        ctx.translate(-this.dims.x / 2, -this.dims.y / 2);
         ctx.drawImage(textures.player, ...SpriteAnim.getCoords(this.animIndex + 4 * this.leftFacing, this.spriteOff, 24), ...this.pos, ...this.dims);
         ctx.restore();
     }
     
     renderUpper() {
         ctx.save();
-        ctx.translate(...this.pos);
+        ctx.translate(this.pos.x, this.pos.y);
         ctx.translate(0, adapt(-50));
         this.textBox.render(); // textbox
         ctx.translate(0, this.dims.y / 2 + adapt(70));
         ctx.textAlign = "center";
-        ctx.fillStyle = this.team;
+        ctx.fillStyle = this.team; // the color of the name 
         ctx.font = `${adapt(18)}px Arial`;
         ctx.fillText(this.name, 0, 0); // name
         ctx.translate(0, adapt(10));
         this.healthBar.render();
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        if(this.leftFacing) ctx.scale(-1, 1); // life hack
+        ctx.translate(this.sword.dims.x - adapt(20), 0);
+        this.sword.render();
         ctx.restore();
     }
 }
@@ -782,10 +822,12 @@ class Other extends SpriteAnim
 {
     constructor(pos = [ -1000, -1000 ]) {
         super(new Vec2(TILE_WIDTH, TILE_WIDTH).modify(unadapt).mult(24 / 16), 4);
-        this.pos = pos;
+        this.pos = new Vec2(...pos);
         this.leftFacing = false;
         this.name = "";
         this.team = "";
+        this.healthBar = new HealthBar(50, 1);
+        this.sword = new Sword();
 
         this.textBox = new TextBox();
     }
@@ -793,19 +835,41 @@ class Other extends SpriteAnim
     update() {
         this.updateAnim();
         this.textBox.update();
+        this.sword.update();
+    }
+
+    getFullCollider() {
+        return [this.pos.x + adapt(10) + this.dims.x / 4 - this.dims.x / 2, this.pos.y, this.dims.x / 2 - adapt(20), this.dims.y / 2];
+    }
+
+    getColliderOrigin(offX = 0, offY = 0) {
+        return [ this.pos.x + offX, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2 + this.dims.y / 6 ];
+    }
+
+    getFullCollider() {
+        return [this.pos.x + adapt(10) + this.dims.x / 4 - this.dims.x / 2, this.pos.y, this.dims.x / 2 - adapt(20), this.dims.y / 2];
+    }
+
+    getSwordCollider() {
+        const x = (this.leftFacing ? this.pos.x - this.sword.dims.x * 1.5 : this.pos.x + this.sword.dims.x / 2);
+        return [ x, this.pos.y, this.sword.dims.x, this.sword.dims.y / 2 ];
+    }
+
+    hurt(collider) {
+        if(!(this.sword.attacking && collided(...this.getSwordCollider(), ...collider))) return 0;
+        return this.sword.damage;
     }
 
     render() {
-        this.update();
         ctx.save();
-        ctx.translate(...this.dims.copy().modify(val => -val / 2));
+        ctx.translate(-this.dims.x / 2, -this.dims.y / 2);
         ctx.drawImage(textures.player, ...SpriteAnim.getCoords(this.animIndex + 4 * this.leftFacing, this.spriteOff, 24), ...this.pos, ...this.dims);
         ctx.restore();
     }
 
     renderUpper() {
         ctx.save();
-        ctx.translate(...this.pos);
+        ctx.translate(this.pos.x, this.pos.y);
         ctx.translate(0, adapt(-50));
         this.textBox.render();
         ctx.translate(0, this.dims.y / 2 + adapt(70));
@@ -813,6 +877,15 @@ class Other extends SpriteAnim
         ctx.fillStyle = this.team;
         ctx.font = `${adapt(18)}px Arial`;
         ctx.fillText(this.name, 0, 0);
+        ctx.translate(0, adapt(10));
+        this.healthBar.render();
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        if(this.leftFacing) ctx.scale(-1, 1); // life hack
+        ctx.translate(this.sword.dims.x - adapt(20), 0);
+        this.sword.render();
         ctx.restore();
     }
 }
@@ -882,10 +955,103 @@ class Joystick extends Interactive
         ctx.restore();
     }
 };
+class Panel
+{
+    constructor(pos, dims, text = () => {}) { // text is a function for convenience
+        this.pos = pos.copy();
+        this.dims = dims.copy();
+        this.text = text;
+    }
+
+    render() {
+        ctx.save();
+        ctx.translate(...this.pos);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(-this.dims.x / 2, -this.dims.y / 2, ...this.dims);
+        ctx.fillStyle = "white";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = `${adapt(18)}px Arial`;
+        ctx.fillText(this.text(), 0, 0);
+        ctx.restore();
+    }
+}
+class Sword
+{
+    constructor() {
+        this.dims = new Vec2(TILE_WIDTH, TILE_WIDTH).mult(4 / 5);
+        this.angle = 0;
+        this.rotPoint = new Vec2(this.dims.x * (0.125 - 0.03125), this.dims.y - this.dims.y * (0.125 - 0.03125)); // very exact calculation, but I like math
+        this.attacking = false;
+        this.increaseDamage = true;
+        this.damage = 100; // this is relative, meaning that is could (and should) be mapped to another value
+        this.hit = false;
+        this.ableToAttack = true;
+    }
+
+    update() {
+        if(this.damage < 100) this.damage++;
+        if(!this.attacking) return;
+        this.angle += 0.2;
+
+        if(this.angle > Math.PI) {
+            this.angle = 0;
+            this.attacking = this.increaseDamage = this.hit = this.ableToAttack = false;
+            this.damage = 0;
+            wait(250).then(() => this.increaseDamage = true);
+            wait(100).then(() => this.ableToAttack = true);
+        }
+    }
+
+    attack() {
+        if(this.ableToAttack)
+            this.attacking = true;
+    }
+
+    getDamage() {
+        if(this.hit) return 0;
+        this.hit = true;
+        return this.damage / 5;
+    }
+
+    render() {
+        if(!this.attacking) return;
+        ctx.save();
+        ctx.translate(-this.dims.x / 2, -this.dims.y / 2);
+        
+        ctx.translate(this.rotPoint.x, this.rotPoint.y);
+        ctx.rotate(this.angle - Math.PI / 2);
+        ctx.translate(-this.rotPoint.x, -this.rotPoint.y);
+        
+        ctx.drawImage(textures.sword, 0, 0, this.dims.x, this.dims.y);
+        ctx.restore();
+    }
+}
+class Base
+{
+    constructor(pos, color) {
+        this.pos = pos.copy();
+        this.dims = new Vec2(2.6, 2.6).mult(TILE_WIDTH);
+        this.color = color;
+        this.type = color + "_base";
+    }
+
+    getCollider() {
+        const padding = adapt(40);
+        return [ this.pos.x - this.dims.x / 2 + padding, this.pos.y - this.dims.y / 2 + padding, this.dims.x - 2 * padding, this.dims.y - 2 * padding ];
+    }
+
+    render() {
+        ctx.save();
+        ctx.translate(...this.pos);
+        ctx.drawImage(textures.bases, ...SpriteAnim.getCoords(...spriteData[this.type], 64, 64), -this.dims.x / 2, -this.dims.y / 2, this.dims.x, this.dims.y);
+        ctx.restore();
+    }
+}
 window.onload = main;
 const MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
 const LOCAL = true;
-const FRAMERATE = 60;
+const FRAMERATE = 60; // not really framerate, more like "update rate", so that the gameplay doesn't feel slow for weaker devices
 
 Array.prototype.equals = function(array) {
     if (!array)
@@ -920,10 +1086,23 @@ const unadapt = val => val * 450 / width;
 const wait = amount => new Promise(resolve => setTimeout(resolve, amount));
 const collided = (x1, y1, w1, h1, x2, y2, w2, h2) => x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2; // checks if 2 rectangles are colliding with the specified values
 const random = (min, max) => Math.random() * (max - min) + min;
+const map = (x, a, b, c, d) => (x - a) / (b - a) * (d - c) + c;
+const uuidv4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+}); // also stolen
 
 let socket;
 
 const others = {};
+const entities = {};
+const panels = [];
+const towers = {
+    red: {},
+    yellow: {},
+    blue: {}
+};
+const bases = {}; // the keys are the team names
 
 const TILE_WIDTH = adapt(80);
 
@@ -931,7 +1110,10 @@ const textures = {
     player: null,
     map: null,
     decorations: null,
-    upperLayer: null
+    upperLayer: null,
+    towers: null,
+    sword: null,
+    bases: null
 };
 
 const spriteOffset = { // y offsets for animations
@@ -997,6 +1179,8 @@ async function preload() {
     textures.decorations = await loadImg("plainDecoration_0.png");
     textures.upperLayer = await loadImg("upperLayer.png");
     textures.towers = await loadImg("towers.png");
+    textures.sword = await loadImg("sword.png");
+    textures.bases = await loadImg("bases.png");
 
     spriteData = await loadJSON("spriteData.json");
 
@@ -1028,7 +1212,7 @@ async function main() {
     $(".online").addEventListener("click", connect);
     $(".offline").addEventListener("click", init);
     $(".close").addEventListener("click", () => $(".connect-error").style.display = "none");
-    $(".chat .button").addEventListener("click", () => {
+    $(".chat .button").addEventListener("click", () => { // the send button
         const input = $(".chat .text");
         const text = input.value.slice(0, 50);
         input.value = "";
@@ -1039,7 +1223,7 @@ async function main() {
     await preload();
     $("body").style.display = "initial";
 
-    { // creating a scope
+    {
         const options = {
             text: "Chat",
             size: new Vec2(50, 50).modify(adapt),
@@ -1053,7 +1237,7 @@ async function main() {
                 };
                 const value = $(".chat").style.display;
                 $(".chat").style.display = opposite[value];
-                setTimeout(() => $(".chat .text").focus(), 150);
+                wait(150).then(() => $(".chat .text").focus());
             }
         };
         buttons.chat = new ActionButton(options);
@@ -1064,12 +1248,32 @@ async function main() {
             text: "Attack",
             size: new Vec2(100, 50).modify(adapt),
             pos: new Vec2(adapt(50 + 50), height - adapt(25 + 100)),
-            handler: () => {
-                player.setAnim("attack", false, 3);
-            }
+            handler: () => player.sword.attack()
         };
         buttons.attack = new ActionButton(options);
     } // attack button
+
+    {
+        const options = {
+            text: "Spawn",
+            size: new Vec2(100, 50).modify(adapt),
+            pos: new Vec2(adapt(50 + 50), height - adapt(25 + 200)),
+            handler: () => {
+                const pos = player.pos.copy().add(new Vec2(TILE_WIDTH, 0).mult(player.leftFacing ? -1 : 1));
+                const type = player.team;
+                const tower = new Tower(pos, type);
+                const id = uuidv4();
+                towers[type][id] = tower;
+                socket.emit("tower", {
+                    pos: [...tower.pos.modify(unadapt)],
+                    type: type,
+                    id: id,
+                    ownerID: socket.id
+                });
+            }
+        };
+        buttons.spawn = new ActionButton(options);
+    } // spawn button
 
     joystick = new Joystick(new Vec2(width - adapt(100), height - adapt(100)));
     terrain = new Terrain();
@@ -1077,6 +1281,13 @@ async function main() {
     const pos = new Vec2(...terrain.getEmptySpot()).modify(val => val * TILE_WIDTH);
     pos.x += TILE_WIDTH / 2;
     player = new Player(pos);
+
+    {
+        const dims = new Vec2(160, 50).modify(adapt);
+        const pos = new Vec2(width - dims.x / 2, dims.y / 2);
+        const panel = new Panel(pos, dims, () => `Money: $${player.money}`);
+        panels.push(panel);
+    } // money panel
 }
 
 function connect() {
@@ -1085,6 +1296,7 @@ function connect() {
     
     socket.on("connect", () => {
         if(started) return;
+        entities[socket.id] = player;
         terrain.getFromServer();
         init();
     });
@@ -1092,23 +1304,35 @@ function connect() {
     socket.on("players", data => {
         for(const id in data) {
             if(id === socket.id) continue;
-            if(!(id in others))
+            if(!(id in others)) {
                 others[id] = new Other();
+                entities[id] = others[id];
+            }
             
-            others[id].pos = data[id].pos.map(adapt); // adapt for the new resolution
+            others[id].pos = new Vec2(...data[id].pos.map(adapt)); // adapt for the new resolution
             others[id].leftFacing = data[id].leftFacing;
             others[id].spriteOff = data[id].spriteOff;
             others[id].team = data[id].team;
             others[id].name = data[id].name;
+            others[id].healthBar.set(data[id].health);
+            if(data[id].attacking) others[id].sword.attack();
             if(!data[id].texts.equals(others[id].textBox.last)) {
                 others[id].textBox.setTexts(data[id].texts);
             }
         }
     });
 
-    socket.on("team", team => {
-        player.team = team;
+    const spawnTower = (pos, type, id) => towers[type][id] = new Tower(new Vec2(...pos).modify(adapt), type);
+
+    socket.on("initial", data => {
+        player.team = data.team;
+        
+        for(const type in data.towersData)
+            for(const id in data.towersData[type])
+                spawnTower(data.towersData[type][id].pos, type, id);
     });
+
+    socket.on("towerSpawn", data => spawnTower(data.pos, data.type, data.id));
     
     socket.on("connect_error", () => { // offline
         socket.close(); // stop trying to connect
@@ -1116,7 +1340,14 @@ function connect() {
         $(".loader").style.display = "none";
     });
     
-    socket.on("remove", id => delete others[id]);
+    socket.on("remove", ({ id, towersRemoveData }) => {
+        delete others[id];
+        delete entities[id];
+
+        for(const id of towersRemoveData.ids) {
+            delete towers[towersRemoveData.type][id];
+        }
+    });
 }
 
 function init() {
@@ -1135,12 +1366,18 @@ function init() {
 
 function update() {
     player.update();
-    terrain.update();
+    for(const id in others)
+        others[id].update();
+
+    for(const type in towers) {
+        for(const id in towers[type])
+            towers[type][id].update();
+    }
 }
 
 let lastTime = 0;
 let timeSinceLast = 0;
-async function render(time) {
+function render(time) {
     // credit to analogstudios for the assets
     // characters are 24 x 24
     // tiles are 16 x 16
@@ -1167,7 +1404,14 @@ async function render(time) {
     player.render();
 
     terrain.renderUpper();
-    terrain.renderTowers();
+
+    for(const type in bases)
+        bases[type].render();
+
+    for(const type in towers) {
+        for(const id in towers[type])
+            towers[type][id].render();
+    }
 
     for(const id in others)
         others[id].renderUpper();
@@ -1179,12 +1423,17 @@ async function render(time) {
         buttons[key].render();
     joystick.render();
 
+    for(const panel of panels)
+        panel.render();
+
     requestAnimationFrame(render);
 }
 
 function setupEvents()
 {
     addEventListener("keydown", e => {
+        if(e.key === "a") buttons.attack.handler();
+        if(e.key === "s") buttons.spawn.handler();
         keys[e.key] = true;
         if(e.key === "Enter" && $(".chat").style.display === "flex") {
             const input = $(".chat .text");
