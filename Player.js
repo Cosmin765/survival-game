@@ -13,17 +13,16 @@ class Player extends SpriteAnim
         this.textBox = new TextBox(["Hello, world!"]);
 
         setInterval(() => {
-            if(socket) {
-                socket.emit("store", {
-                    pos: [this.pos.x, this.pos.y].map(unadapt), // sending a normalized version
-                    leftFacing: this.leftFacing,
-                    spriteOff: this.spriteOff,
-                    texts: this.textBox.visible ? this.textBox.texts : [], // no point in sending the texts if they are not visible
-                    name: this.name,
-                    health: this.healthBar.curr,
-                    attacking: this.sword.attacking
-                });
-            }
+            if(!socket) return;
+            socket.emit("store", {
+                pos: [this.pos.x, this.pos.y].map(unadapt), // sending a normalized version
+                leftFacing: this.leftFacing,
+                spriteOff: this.spriteOff,
+                texts: this.textBox.visible ? this.textBox.texts : [], // no point in sending the texts if they are not visible
+                name: this.name,
+                health: this.healthBar.curr,
+                attacking: this.sword.attacking
+            });
         }, 1000 / 30);
     }
 
@@ -56,7 +55,7 @@ class Player extends SpriteAnim
 
             for(const option of options) {
                 const futureCollider = this.getCollider(...option);
-                let obstacle = false;
+                let ableToMove = true;
                 
                 for(const [ j, i ] of positions) {
                     if(!terrain.inRange(i, j)) continue;
@@ -67,29 +66,17 @@ class Player extends SpriteAnim
         
                         for(const component of collider) {
                             if(collided(...futureCollider, ...component)) {
-                                obstacle = true;
+                                ableToMove = false;
                                 break;
                             }
                         }
     
-                        if(obstacle) break;
+                        if(!ableToMove) break;
                     }
                 }
-                for(const type in towers) { // todo: optimize
-                    for(const id in towers[type]) {
-                        if(collided(...futureCollider, ...towers[type][id].getCollider())) {
-                            obstacle = true;
-                            break;
-                        }
-                    }
-                }
-                for(const type in bases) { // todo: optimize
-                    if(collided(...futureCollider, ...bases[type].getCollider())) {
-                        obstacle = true;
-                        break;
-                    }
-                }
-                if(!obstacle) {
+                if(obstacle(futureCollider)) ableToMove = false;
+
+                if(ableToMove) {
                     this.pos.add(option);
                     break;
                 }
@@ -105,20 +92,22 @@ class Player extends SpriteAnim
                 if(!collider) continue;
     
                 for(const component of collider) {
-                    if(collided(...swordCollider, ...component)) {
-                        const name = idToKey[terrain.decorations[i][j]];
-                        if(name.includes("tree")) {
-                            terrain.decorations[i - 1][j] = null;
-                            for(let k = 0; k < terrain.upperLayer.length; ++k) {
-                                const item = terrain.upperLayer[k];
-                                if((item.i === i - 1 || item.i === i) && item.j === j) {
-                                    terrain.upperLayer.splice(k, 1); // TODO: some trees are not removed properly. also, to make a remove function in the terrain class
-                                }
-                            }
-                        }
-                        terrain.decorations[i][j] = null;
-                        break;
+                    if(!collided(...swordCollider, ...component))
+                        continue;
+
+                    const key = i + "," + j;
+                    if(!(key in terrain.healthData))
+                        terrain.healthData[key] = 3; // how many hits are needed to destroy the item
+                    
+                    if(player.sword.getDamage())
+                        terrain.healthData[key] -= 1;
+
+                    if(!terrain.healthData[key]) {
+                        terrain.removeDecoration(i, j);
+                        player.money += 50;
+                        socket.emit("removeDecoration", { i, j });
                     }
+                    break;
                 }
             }
         }
@@ -129,7 +118,7 @@ class Player extends SpriteAnim
 
         const [ j, i ] = origin.map(val => val / TILE_WIDTH | 0); // the tile coords of the origin point
 
-        const positions = []; // the surrounding tiles' positions
+        const positions = [];
         for(let a = -1; a <= 1; ++a)
             for(let b = -1; b <= 1; ++b)
                 positions.push([ a + j, b + i ]);
@@ -154,8 +143,7 @@ class Player extends SpriteAnim
     }
 
     hurt(collider) {
-        if(!(this.sword.attacking && collided(...this.getSwordCollider(), ...collider))) return 0;
-        return this.sword.damage;
+        return (this.sword.attacking && collided(...this.getSwordCollider(), ...collider));
     }
 
     render() {

@@ -54,6 +54,19 @@ const towers = {
 };
 const bases = {}; // the keys are the team names
 
+const obstacle = collider => {
+    for(const type in towers)
+        for(const id in towers[type])
+            if(collided(...towers[type][id].getCollider(), ...collider))
+                return true;
+
+    for(const type in bases)
+        if(collided(...bases[type].getCollider(), ...collider))
+            return true;
+
+    return false;
+};
+
 const TILE_WIDTH = adapt(80);
 
 const textures = {
@@ -233,11 +246,15 @@ async function main() {
             handler() {
                 const cost = 200;
                 if(player.money < cost) return;
-                player.money -= cost;
 
                 const pos = player.pos.copy().add(new Vec2(TILE_WIDTH, 0).mult(player.leftFacing ? -1 : 1));
                 const type = player.team;
                 const tower = new Tower(pos, type);
+
+                if(obstacle(tower.getCollider())) return;
+
+                player.money -= cost;
+
                 const id = uuidv4();
                 towers[type][id] = tower;
                 socket.emit("tower", {
@@ -311,6 +328,15 @@ function connect() {
 
     socket.on("towerSpawn", data => spawnTower(data.pos, data.type, data.id));
     
+    socket.on("removeDecoration", data => terrain.removeDecoration(data.i, data.j));
+
+    socket.on("spawnDecoration", data => {
+        for(const item of data) {
+            terrain.decorations[item.i][item.j] = item.id;
+            terrain.genUpper(terrain.upperLayer, item.i, item.j);
+        }
+    });
+
     socket.on("connect_error", () => { // offline
         socket.close(); // stop trying to connect
         $(".connect-error").style.display = "flex";
@@ -411,6 +437,7 @@ function setupEvents()
     addEventListener("keydown", e => {
         if(e.key === "a") buttons["Attack"].handler();
         if(e.key === "s") buttons["Spawn"].handler();
+        if(e.key === "t") buttons["Tower $200"].handler();
         keys[e.key] = true;
         if(e.key === "Enter" && $(".chat").style.display === "flex") {
             const input = $(".chat .text");

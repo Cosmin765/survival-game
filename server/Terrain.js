@@ -13,6 +13,11 @@ class Terrain
 {
     static DEFAULT_I = 20;
     static DEFAULT_J = 10;
+    static ITEMS_COUNT = 0;
+
+    static spriteData = spriteData;
+    static keyToId = keyToId;
+    static idToKey = idToKey;
 
     static generateMap(i = Terrain.DEFAULT_I, j = Terrain.DEFAULT_J) {
         const map = Array(i).fill(0).map(_ => Array(j).fill(keyToId["plain"]));
@@ -55,13 +60,18 @@ class Terrain
         const treeName = [ "_tree_1", "_tree_2", "_tree_3" ][random(0, 3) | 0];
         
         const [ i, j ] = Terrain.getRandCoord(container.length, container[0].length);
-        if(Terrain.reserved(container, i, j) || Terrain.reserved(container, i - 1, j)) return;
+        if(Terrain.reserved(container, i, j) || Terrain.reserved(container, i - 1, j)) return null;
         
         if(container[i][j] !== null || container[i - 1][j] !== null)
-            return;
+            return null;
         
         container[i][j] = keyToId["bottom" + treeName];
         container[i - 1][j] = keyToId["top" + treeName];
+
+        return [
+            { i, j, id: container[i][j] },
+            { i: i - 1, j, id: container[i - 1][j] }
+        ];
     }
     
     static genStone(container) {
@@ -73,6 +83,10 @@ class Terrain
             return;
         
         container[i][j] = keyToId[name];
+
+        return [
+            { i, j, id: container[i][j] }
+        ];
     }
 
     static getRandCoord(i, j) {

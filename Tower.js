@@ -27,7 +27,7 @@ class Tower
             }
         }
 
-        if(player.hurt(this.getCollider())) {
+        if(player.team !== this.color && player.hurt(this.getCollider())) {
             const damage = player.sword.getDamage();
             this.healthBar.decrease(damage);
         }

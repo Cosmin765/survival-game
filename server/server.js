@@ -3,6 +3,7 @@ const Terrain = require("./Terrain");
 const PlayerManager = require("./PlayerManager");
 
 const TILE_WIDTH = 80;
+
 const getDist = (x1, y1, x2, y2) => Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
 const playerManager = new PlayerManager();
 
@@ -44,6 +45,16 @@ io.on('connection', socket => {
     socket.on("tower", data => {
         towersData[data.type][data.id] = { pos: data.pos, ownerID: data.ownerID };
         socket.broadcast.emit("towerSpawn", data);
+    });
+
+    socket.on("removeDecoration", data => {
+        socket.broadcast.emit("removeDecoration", data);
+
+        const { i, j } = data;
+        const name = Terrain.idToKey[decorations[i][j]];
+        if(name.includes("tree"))
+            decorations[i - 1][j] = null;
+        decorations[i][j] = null;
     });
 
     socket.on("getTerrain", () => socket.emit("terrain", { map, decorations }));
@@ -99,4 +110,20 @@ setInterval(() => {
     }
 
     io.emit("fire", targetData);
+}, 1000);
+
+setInterval(() => {
+    const data = Math.random() < 0.5 ? Terrain.genTree(decorations) : Terrain.genStone(decorations);
+    if(!data) return;
+    if(Terrain.ITEMS_COUNT > decorations.length * decorations[0].length / 10) return;
+    const r = 2;
+    for(const item of data) {
+        for(const id in playersData) {
+            if(getDist(item.j, item.i, playersData[id].pos[0] / TILE_WIDTH, playersData[id].pos[1] / TILE_WIDTH) < r)
+                return;
+        }
+    }
+
+    Terrain.ITEMS_COUNT++;
+    io.emit("spawnDecoration", data);
 }, 1000);

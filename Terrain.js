@@ -5,6 +5,7 @@ class Terrain
         this.decorations = decorations;
         this.layers = { map, decorations };
         this.upperLayer = this.calculateUpperLayer();
+        this.healthData = {};
     }
 
     getFromServer() {
@@ -43,6 +44,7 @@ class Terrain
     }
 
     relativeCollider(layer, i, j) {
+        if(i >= this.map.length || j >= this.map[0].length) return null;
         const collider = colliders[idToKey[this.layers[layer][i][j]]];
         if(!collider) return null;
 
@@ -53,9 +55,34 @@ class Terrain
         });
     }
 
+    removeDecoration(i, j) {
+        const name = idToKey[this.decorations[i][j]];
+        if(name.includes("tree")) {
+            this.decorations[i - 1][j] = null;
+            for(let k = 0; k < this.upperLayer.length; ++k) {
+                const item = this.upperLayer[k];
+                if((item.i === i - 1 || item.i === i) && item.j === j) {
+                    this.upperLayer.splice(k--, 1);
+                }
+            }
+        }
+        this.decorations[i][j] = null;
+        delete this.healthData[i + "," + j];
+    }
+
     calculateUpperLayer() {
         const upperLayer = [];
 
+        for(let i = 0; i < this.decorations.length; ++i) {
+            for(let j = 0; j < this.decorations[i].length; ++j) {
+                this.genUpper(upperLayer, i, j);
+            }
+        }
+
+        return upperLayer;
+    }
+
+    genUpper(container, i, j) {
         const upperSprites = [
             "top_tree_1",
             "top_tree_2",
@@ -65,15 +92,9 @@ class Terrain
             "bottom_tree_3"
         ].map(key => keyToId[key]);
 
-        for(let i = 0; i < this.decorations.length; ++i) {
-            for(let j = 0; j < this.decorations[i].length; ++j) {
-                if(upperSprites.includes(this.decorations[i][j])) {
-                    upperLayer.push({ i, j, id: keyToId["upper_" + idToKey[this.decorations[i][j]]] });
-                }
-            }
+        if(upperSprites.includes(this.decorations[i][j])) {
+            container.push({ i, j, id: keyToId["upper_" + idToKey[this.decorations[i][j]]] });
         }
-
-        return upperLayer;
     }
 
     render() {
