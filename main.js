@@ -102,7 +102,7 @@ const loadJSON = async path => await (await fetch("./data/" + path)).json();
 function preload() {
     return new Promise(resolve => {
         const imageData = [
-            [ "player", "characters/bandit_.png" ],
+            [ "player", "bandit_.png" ],
             [ "map", "forest.png" ],
             [ "decorations", "plainDecoration_0.png" ],
             [ "upperLayer", "upperLayer.png" ],
