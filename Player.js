@@ -11,6 +11,10 @@ class Player extends SpriteAnim
         this.sword = new Sword();
 
         this.textBox = new TextBox(["Hello, world!"]);
+        this.textBox.onSetTexts = texts => {
+            if(!socket) return;
+            socket.emit("texts", { texts, id: socket.id });
+        };
 
         setInterval(() => {
             if(!socket) return;
@@ -18,8 +22,6 @@ class Player extends SpriteAnim
                 pos: [this.pos.x, this.pos.y].map(unadapt), // sending a normalized version
                 leftFacing: this.leftFacing,
                 spriteOff: this.spriteOff,
-                texts: this.textBox.visible ? this.textBox.texts : [], // no point in sending the texts if they are not visible
-                name: this.name,
                 health: this.healthBar.curr,
                 attacking: this.sword.attacking
             });

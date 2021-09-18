@@ -85,74 +85,54 @@ const spriteOffset = { // y offsets for animations
         walking: 1,
         running: 2,
         dying: 5,
-        attack: 6,
     }
 };
 
-let spriteData, idToKey = [], keyToId = {}; // json data
+let spriteData, idToKey = [], keyToId = {}, colliders = {}; // json data
 
 const buttonDisplay = {};
 
-const colliders = {
-    "left_edge": [
-        [ 0, 0, 0.1, 1 ]
-    ],
-    "top_edge": [
-        [ 0, 0, 1, 0.1 ]
-    ],
-    "right_edge": [
-        [ 0.9, 0, 0.1, 1 ]
-    ],
-    "bottom_edge": [
-        [ 0, 0.9, 1, 0.1 ]
-    ],
-    "bottom_tree_1": [
-        [ 0.4, 0.2, 0.2, 0.4 ]
-    ],
-    "stone_1": [
-        [ 0.3, 0.2, 0.4, 0.4 ]
-    ],
-    "stone_2": [
-        [ 0.3, 0.1, 0.4, 0.5 ]
-    ]
-};
+const loadImg = path => new Promise(resolve => {
+    const img = new Image();
+    img.src = "./assets/" + path;
+    img.onload = () => resolve(img);
+});
+const loadJSON = async path => await (await fetch("./data/" + path)).json();
 
-colliders["top_left_corner"] = [...colliders.top_edge, ...colliders.left_edge];
-colliders["top_right_corner"] = [...colliders.top_edge, ...colliders.right_edge];
-colliders["bottom_right_corner"] = [...colliders.bottom_edge, ...colliders.right_edge];
-colliders["bottom_left_corner"] = [...colliders.bottom_edge, ...colliders.left_edge];
-colliders["bottom_tree_2"] = colliders["bottom_tree_1"];
-colliders["bottom_tree_3"] = colliders["bottom_tree_1"];
-
-// TODO: make them run in parallel
-function loadImg(path) {
+function preload() {
     return new Promise(resolve => {
-        const img = new Image();
-        img.src = "./assets/" + path;
-        img.onload = () => resolve(img);
+        const imageData = [
+            [ "player", "characters/bandit_.png" ],
+            [ "map", "forest.png" ],
+            [ "decorations", "plainDecoration_0.png" ],
+            [ "upperLayer", "upperLayer.png" ],
+            [ "towers", "towers.png" ],
+            [ "sword", "sword.png" ],
+            [ "bases", "bases.png" ]
+        ];
+        const jsonData = [
+            [ "spriteData", "spriteData.json" ],
+            [ "colliders", "colliders.json" ]
+        ];
+        const count = {
+            image: 0,
+            json: 0
+        };
+        const tempContainer = {};
+        const handler = () => {
+            const done = count.image === imageData.length && count.json === jsonData.length;
+            if(!done) return;
+            spriteData = tempContainer.spriteData;
+            colliders = tempContainer.colliders;
+            for(const key in spriteData) {
+                keyToId[key] = idToKey.length;
+                idToKey.push(key);
+            } // aliases for the sprites
+            resolve();
+        };
+        imageData.forEach(([ key, filename ]) => loadImg(filename).then(img => { textures[key] = img; count.image++; handler(); }));
+        jsonData.forEach(([ key, filename ]) => loadJSON(filename).then(json => { tempContainer[key] = json; count.json++; handler(); }));
     });
-}
-
-async function loadJSON(path) {
-    const res = await fetch("./data/" + path);
-    return await res.json();
-}
-
-async function preload() {
-    textures.player = await loadImg("characters/bandit_.png");
-    textures.map = await loadImg("forest.png");
-    textures.decorations = await loadImg("plainDecoration_0.png");
-    textures.upperLayer = await loadImg("upperLayer.png");
-    textures.towers = await loadImg("towers.png");
-    textures.sword = await loadImg("sword.png");
-    textures.bases = await loadImg("bases.png");
-
-    spriteData = await loadJSON("spriteData.json");
-
-    for(const key in spriteData) {
-        keyToId[key] = idToKey.length;
-        idToKey.push(key);
-    } // aliases for the sprites
 }
 
 let started = false;
@@ -309,15 +289,14 @@ function connect() {
             others[id].name = data[id].name;
             others[id].healthBar.set(data[id].health);
             if(data[id].attacking) others[id].sword.attack();
-            if(!data[id].texts.equals(others[id].textBox.last)) {
-                others[id].textBox.setTexts(data[id].texts);
-            }
         }
     });
-
+    
     const spawnTower = (pos, type, id) => towers[type][id] = new Tower(new Vec2(...pos).modify(adapt), type, id);
-
+    
     socket.on("initial", data => {
+        socket.emit("texts", { texts: ["Hello, world!"], id: socket.id });
+        socket.emit("store", { name: player.name });
         player.team = data.team;
         terrain.parseTerrain(data.terrain);
         
@@ -353,6 +332,7 @@ function connect() {
     socket.on("hurtTower", data => towers[data.type][data.id].healthBar.decrease(data.damage));
     socket.on("hurtBase", data => bases[data.type].healthBar.decrease(data.damage));
     socket.on("removeTower", data => delete towers[data.type][data.id]);
+    socket.on("texts", data => others[data.id].textBox.setTexts(data.texts));
 
     socket.on("connect_error", () => { // offline
         socket.close(); // stop trying to connect

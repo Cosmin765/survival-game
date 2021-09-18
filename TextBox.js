@@ -14,6 +14,7 @@ class TextBox
 
     setTexts(texts)
     {
+        this.onSetTexts(texts);
         this.texts = texts;
         this.last = texts;
         this.textsIndex = 0;
@@ -21,6 +22,8 @@ class TextBox
         this.visible = true;
         this.reset();
     }
+
+    onSetTexts() {} // to be overridden
 
     reset()
     {

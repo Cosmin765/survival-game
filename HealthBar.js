@@ -38,7 +38,7 @@ class HealthBar
         ctx.translate(-this.len / 2, 0);
         ctx.fillRect(0, 0, this.len, adapt(7));
         ctx.fillStyle = "lightgreen";
-        ctx.fillRect(0, 0, adapt(this.curr / this.max * this.len), adapt(7));
+        ctx.fillRect(0, 0, this.curr / this.max * this.len, adapt(7));
         ctx.strokeRect(0, 0, this.len, adapt(7));
         ctx.restore();
     }
