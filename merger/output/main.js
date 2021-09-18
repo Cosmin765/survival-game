@@ -191,8 +191,7 @@ class Interactive
 };
 class ActionButton extends Interactive
 {
-    // constructor(text, pos, handler = () => {}, displayCondition = () => true)
-    constructor(options)
+    constructor(options) // { size?, pos, text, handler?, displayCondition?, fontSize?, theme? }
     {
         const size = options.size || new Vec2(150, 75).modify(adapt);
         const pos = options.pos;
@@ -201,10 +200,13 @@ class ActionButton extends Interactive
         this.pos = pos.copy();
         this.size = size;
         this.text = options.text;
+        this.name = options.text;
         this.pressed = false;
         this.handler = (options.handler || (() => {})).bind(this);
-        this.displayCondition = options.displayCondition || (() => true);
+        this.displayCondition = options.displayCondition || (() => buttonDisplay[this.name]);
+        if(!options.displayCondition) buttonDisplay[this.name] = true;
         this.fontSize = options.fontSize || adapt(22);
+        this.theme = options.theme || ActionButton.themes.blue;
     }
 
     press()
@@ -230,17 +232,48 @@ class ActionButton extends Interactive
         if(!this.displayCondition())
             return;
 
-        ctx.strokeStyle = this.pressed ? "red" : "#00ccff";
-        ctx.fillStyle = this.pressed ? "rgba(99, 159, 255, 0.8)" : "rgba(28, 106, 232, 0.5)";
+        ctx.strokeStyle = this.theme.stroke[this.pressed];
+        ctx.fillStyle = this.theme.background[this.pressed];
 
-        const rectData = [...this.pos.copy().sub(new Vec2(this.size.x, this.size.y).div(2)), this.size.x, this.size.y];
+        const rectData = [this.pos.x - this.size.x / 2, this.pos.y - this.size.y / 2, this.size.x, this.size.y];
         ctx.fillRect(...rectData);
         ctx.strokeRect(...rectData);
         
         ctx.font = `${this.fontSize}px Arial`;
-        ctx.fillStyle = this.pressed ? "red" : "#000";
-        const textWidth = ctx.measureText(this.text).width;
-        ctx.fillText(this.text, ...this.pos.copy().add(new Vec2(-textWidth / 2, adapt(10))));
+        ctx.fillStyle = this.theme.text[this.pressed];
+        ctx.textAlign = "center";
+        ctx.fillText(this.text, this.pos.x, this.pos.y + adapt(10));
+    }
+
+    static themes = {
+        blue: {
+            background: {
+                true: "rgba(99, 159, 255, 0.8)", // true means pressed
+                false: "rgba(28, 106, 232, 0.5)"
+            },
+            stroke: {
+                true: "red",
+                false: "#00ccff"
+            },
+            text: {
+                true: "red",
+                false: "black"
+            }
+        },
+        red: {
+            background: {
+                true: "rgba(255, 56, 56, 0.4)",
+                false: "rgba(255, 0, 0, 0.4)"
+            },
+            stroke: {
+                true: "white",
+                false: "red"
+            },
+            text: {
+                true: "white",
+                false: "black"
+            }
+        }
     }
 }
 class Fireball
@@ -278,10 +311,11 @@ class Fireball
 }
 class Tower
 {
-    constructor(pos, color) {
+    constructor(pos, color, id) {
         this.pos = pos.copy();
         this.color = color;
         this.type = color + "_tower";
+        this.id = id;
         this.dims = new Vec2(1.3, 2.6).mult(TILE_WIDTH);
         this.fireBalls = [];
         this.healthBar = new HealthBar(40, 1);
@@ -294,10 +328,11 @@ class Tower
                 this.fireBalls.splice(i, 1);
                 i--; continue;
             }
+            const fireballCollider = this.fireBalls[i].getCollider();
             for(const id in entities) {
                 const entity = entities[id];
                 if(entity.team === this.color) continue;
-                if(collided(...entity.getFullCollider(), ...this.fireBalls[i].getCollider())) {
+                if(collided(...entity.getFullCollider(), ...fireballCollider)) {
                     entity.healthBar.decrease(4);
                     this.fireBalls.splice(i, 1);
                     i--; break;
@@ -305,8 +340,9 @@ class Tower
             }
         }
 
-        if(player.hurt(this.getCollider())) {
+        if(player.team !== this.color && player.hurt(this.getCollider())) {
             const damage = player.sword.getDamage();
+            socket.emit("hurtTower", { type: this.color, id: this.id, damage: damage });
             this.healthBar.decrease(damage);
         }
     }
@@ -337,6 +373,7 @@ class Terrain
         this.decorations = decorations;
         this.layers = { map, decorations };
         this.upperLayer = this.calculateUpperLayer();
+        this.healthData = {};
     }
 
     getFromServer() {
@@ -374,27 +411,58 @@ class Terrain
         });
     }
 
+    relativeCollider(layer, i, j) {
+        if(i >= this.map.length || j >= this.map[0].length) return null;
+        const collider = colliders[idToKey[this.layers[layer][i][j]]];
+        if(!collider) return null;
+
+        return collider.map(component => {
+            const data = [...component];
+            data[0] += j; data[1] += i;
+            return data.map(val => val * TILE_WIDTH);
+        });
+    }
+
+    removeDecoration(i, j) {
+        const name = idToKey[this.decorations[i][j]];
+        if(name.includes("tree")) {
+            this.decorations[i - 1][j] = null;
+            for(let k = 0; k < this.upperLayer.length; ++k) {
+                const item = this.upperLayer[k];
+                if((item.i === i - 1 || item.i === i) && item.j === j) {
+                    this.upperLayer.splice(k--, 1);
+                }
+            }
+        }
+        this.decorations[i][j] = null;
+        delete this.healthData[i + "," + j];
+    }
+
     calculateUpperLayer() {
         const upperLayer = [];
 
-        const upperSprites = [
-            keyToId["top_tree_1"],
-            keyToId["top_tree_2"],
-            keyToId["top_tree_3"],
-            keyToId["bottom_tree_1"],
-            keyToId["bottom_tree_2"],
-            keyToId["bottom_tree_3"]
-        ];
-
         for(let i = 0; i < this.decorations.length; ++i) {
             for(let j = 0; j < this.decorations[i].length; ++j) {
-                if(upperSprites.includes(this.decorations[i][j])) {
-                    upperLayer.push({ i, j, id: keyToId["upper_" + idToKey[this.decorations[i][j]]] });
-                }
+                this.genUpper(upperLayer, i, j);
             }
         }
 
         return upperLayer;
+    }
+
+    genUpper(container, i, j) {
+        const upperSprites = [
+            "top_tree_1",
+            "top_tree_2",
+            "top_tree_3",
+            "bottom_tree_1",
+            "bottom_tree_2",
+            "bottom_tree_3"
+        ].map(key => keyToId[key]);
+
+        if(upperSprites.includes(this.decorations[i][j])) {
+            container.push({ i, j, id: keyToId["upper_" + idToKey[this.decorations[i][j]]] });
+        }
     }
 
     render() {
@@ -669,17 +737,16 @@ class Player extends SpriteAnim
         this.textBox = new TextBox(["Hello, world!"]);
 
         setInterval(() => {
-            if(socket) {
-                socket.emit("store", {
-                    pos: [this.pos.x, this.pos.y].map(unadapt), // sending a normalized version
-                    leftFacing: this.leftFacing,
-                    spriteOff: this.spriteOff,
-                    texts: this.textBox.visible ? this.textBox.texts : [], // no point in sending the texts if they are not visible
-                    name: this.name,
-                    health: this.healthBar.curr,
-                    attacking: this.sword.attacking
-                });
-            }
+            if(!socket) return;
+            socket.emit("store", {
+                pos: [this.pos.x, this.pos.y].map(unadapt), // sending a normalized version
+                leftFacing: this.leftFacing,
+                spriteOff: this.spriteOff,
+                texts: this.textBox.visible ? this.textBox.texts : [], // no point in sending the texts if they are not visible
+                name: this.name,
+                health: this.healthBar.curr,
+                attacking: this.sword.attacking
+            });
         }, 1000 / 30);
     }
 
@@ -702,62 +769,38 @@ class Player extends SpriteAnim
         if(keys["ArrowRight"]) movement.x += 1;
 
         const vel = (movement.dist() ? movement : joystick.dir()).normalize().mult(adapt(4));
+        const positions = this.getSurroundingPositions();
 
         if(vel.dist()) {
             this.leftFacing = vel.x < 0;
             this.setAnim("running");
 
             const options = [ vel, new Vec2(vel.x, 0), new Vec2(0, vel.y) ]; // the ways we can move
-            const origin = this.getColliderOrigin();
 
             for(const option of options) {
-                const [ j, i ] = origin.map(val => val / TILE_WIDTH | 0); // the tile coords of the origin point
-
-                const positions = []; // the surrounding tiles' positions
-                for(let a = -1; a <= 1; ++a)
-                    for(let b = -1; b <= 1; ++b)
-                        positions.push([ a + j, b + i ]);
-
                 const futureCollider = this.getCollider(...option);
-                let obstacle = false;
+                let ableToMove = true;
                 
                 for(const [ j, i ] of positions) {
-                    if(!terrain.inRange(i, j))
-                        continue;
+                    if(!terrain.inRange(i, j)) continue;
                     
                     for(const layer in terrain.layers) {
-                        const collider = colliders[idToKey[terrain.layers[layer][i][j]]];
+                        const collider = terrain.relativeCollider(layer, i, j);
+                        if(!collider) continue;
         
-                        if(collider) {
-                            for(const component of collider) {
-                                const data = [...component];
-                                data[0] += j; data[1] += i;
-            
-                                if(collided(...futureCollider, ...data.map(val => val * TILE_WIDTH))) {
-                                    obstacle = true;
-                                    break;
-                                }
+                        for(const component of collider) {
+                            if(collided(...futureCollider, ...component)) {
+                                ableToMove = false;
+                                break;
                             }
                         }
     
-                        if(obstacle) break;
+                        if(!ableToMove) break;
                     }
                 }
-                for(const type in towers) { // todo: optimize
-                    for(const id in towers[type]) {
-                        if(collided(...futureCollider, ...towers[type][id].getCollider())) {
-                            obstacle = true;
-                            break;
-                        }
-                    }
-                }
-                for(const type in bases) { // todo: optimize
-                    if(collided(...futureCollider, ...bases[type].getCollider())) {
-                        obstacle = true;
-                        break;
-                    }
-                }
-                if(!obstacle) {
+                if(obstacle(futureCollider)) ableToMove = false;
+
+                if(ableToMove) {
                     this.pos.add(option);
                     break;
                 }
@@ -765,6 +808,45 @@ class Player extends SpriteAnim
         } else {
             this.setAnim("idle");
         }
+
+        if(this.sword.attacking) {
+            const swordCollider = this.getSwordCollider();
+            for(const [ j, i ] of positions) {
+                const collider = terrain.relativeCollider("decorations", i, j);
+                if(!collider) continue;
+    
+                for(const component of collider) {
+                    if(!collided(...swordCollider, ...component))
+                        continue;
+
+                    const key = i + "," + j;
+                    if(!(key in terrain.healthData))
+                        terrain.healthData[key] = 3; // how many hits are needed to destroy the item
+                    
+                    if(player.sword.getDamage())
+                        terrain.healthData[key] -= 1;
+
+                    if(!terrain.healthData[key]) {
+                        terrain.removeDecoration(i, j);
+                        player.money += 50;
+                        socket.emit("removeDecoration", { i, j });
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    getSurroundingPositions() {
+        const origin = this.getColliderOrigin();
+
+        const [ j, i ] = origin.map(val => val / TILE_WIDTH | 0); // the tile coords of the origin point
+
+        const positions = [];
+        for(let a = -1; a <= 1; ++a)
+            for(let b = -1; b <= 1; ++b)
+                positions.push([ a + j, b + i ]);
+        return positions;
     }
 
     getCollider(offX = 0, offY = 0) {
@@ -785,8 +867,7 @@ class Player extends SpriteAnim
     }
 
     hurt(collider) {
-        if(!(this.sword.attacking && collided(...this.getSwordCollider(), ...collider))) return 0;
-        return this.sword.damage;
+        return (this.sword.attacking && collided(...this.getSwordCollider(), ...collider) && !this.sword.hit);
     }
 
     render() {
@@ -1034,6 +1115,11 @@ class Base
         this.dims = new Vec2(2.6, 2.6).mult(TILE_WIDTH);
         this.color = color;
         this.type = color + "_base";
+        this.healthBar = new HealthBar(100, 1);
+    }
+
+    update() {
+        
     }
 
     getCollider() {
@@ -1044,7 +1130,9 @@ class Base
     render() {
         ctx.save();
         ctx.translate(...this.pos);
-        ctx.drawImage(textures.bases, ...SpriteAnim.getCoords(...spriteData[this.type], 64, 64), -this.dims.x / 2, -this.dims.y / 2, this.dims.x, this.dims.y);
+        ctx.drawImage(textures.bases, ...SpriteAnim.getCoords(...spriteData[this.type], 64), -this.dims.x / 2, -this.dims.y / 2, this.dims.x, this.dims.y);
+        ctx.translate(0, adapt(20));
+        this.healthBar.render();
         ctx.restore();
     }
 }
@@ -1104,6 +1192,19 @@ const towers = {
 };
 const bases = {}; // the keys are the team names
 
+const obstacle = collider => {
+    for(const type in towers)
+        for(const id in towers[type])
+            if(collided(...towers[type][id].getCollider(), ...collider))
+                return true;
+
+    for(const type in bases)
+        if(collided(...bases[type].getCollider(), ...collider))
+            return true;
+
+    return false;
+};
+
 const TILE_WIDTH = adapt(80);
 
 const textures = {
@@ -1127,6 +1228,8 @@ const spriteOffset = { // y offsets for animations
 };
 
 let spriteData, idToKey = [], keyToId = {}; // json data
+
+const buttonDisplay = {};
 
 const colliders = {
     "left_edge": [
@@ -1229,7 +1332,7 @@ async function main() {
             size: new Vec2(50, 50).modify(adapt),
             pos: new Vec2(width / 2, adapt(25)),
             fontSize: adapt(20),
-            handler: () => {
+            handler() {
                 const opposite = {
                     "": "flex", // sometimes, none in display is returned as an empty string. Why, JavaScript?... WHY?
                     "flex": "none",
@@ -1240,7 +1343,7 @@ async function main() {
                 wait(150).then(() => $(".chat .text").focus());
             }
         };
-        buttons.chat = new ActionButton(options);
+        buttons[options.text] = new ActionButton(options);
     } // chat button
 
     {
@@ -1248,20 +1351,48 @@ async function main() {
             text: "Attack",
             size: new Vec2(100, 50).modify(adapt),
             pos: new Vec2(adapt(50 + 50), height - adapt(25 + 100)),
-            handler: () => player.sword.attack()
+            handler() {
+                player.sword.attack();  
+            }
         };
-        buttons.attack = new ActionButton(options);
+        buttons[options.text] = new ActionButton(options);
     } // attack button
 
     {
         const options = {
             text: "Spawn",
             size: new Vec2(100, 50).modify(adapt),
-            pos: new Vec2(adapt(50 + 50), height - adapt(25 + 200)),
-            handler: () => {
+            pos: new Vec2(width - adapt(50 + 50), height - adapt(25 + 200)),
+            handler() {
+                for(const name in buttons) {
+                    if(name.includes("Tower"))
+                        buttonDisplay[name] = !buttonDisplay[name];
+                }
+
+                this.text = this.text === "Spawn" ? "Return" : "Spawn";
+                this.theme = this.theme === ActionButton.themes.blue ? ActionButton.themes.red : ActionButton.themes.blue;
+            }
+        };
+        buttons[options.text] = new ActionButton(options);
+    } // spawn button
+
+    {
+        const options = {
+            text: "Tower $200",
+            size: new Vec2(160, 50).modify(adapt),
+            pos: new Vec2(width - adapt(50 + 50), height - adapt(25 + 300)),
+            handler() {
+                const cost = 200;
+                if(player.money < cost) return;
+
                 const pos = player.pos.copy().add(new Vec2(TILE_WIDTH, 0).mult(player.leftFacing ? -1 : 1));
                 const type = player.team;
                 const tower = new Tower(pos, type);
+
+                if(obstacle(tower.getCollider())) return;
+
+                player.money -= cost;
+
                 const id = uuidv4();
                 towers[type][id] = tower;
                 socket.emit("tower", {
@@ -1272,8 +1403,9 @@ async function main() {
                 });
             }
         };
-        buttons.spawn = new ActionButton(options);
-    } // spawn button
+        buttons[options.text] = new ActionButton(options);
+        buttonDisplay[options.text] = false;
+    } // tower button
 
     joystick = new Joystick(new Vec2(width - adapt(100), height - adapt(100)));
     terrain = new Terrain();
@@ -1322,7 +1454,7 @@ function connect() {
         }
     });
 
-    const spawnTower = (pos, type, id) => towers[type][id] = new Tower(new Vec2(...pos).modify(adapt), type);
+    const spawnTower = (pos, type, id) => towers[type][id] = new Tower(new Vec2(...pos).modify(adapt), type, id);
 
     socket.on("initial", data => {
         player.team = data.team;
@@ -1334,6 +1466,17 @@ function connect() {
 
     socket.on("towerSpawn", data => spawnTower(data.pos, data.type, data.id));
     
+    socket.on("removeDecoration", data => terrain.removeDecoration(data.i, data.j));
+
+    socket.on("spawnDecoration", data => {
+        for(const item of data) {
+            terrain.decorations[item.i][item.j] = item.id;
+            terrain.genUpper(terrain.upperLayer, item.i, item.j);
+        }
+    });
+
+    socket.on("hurtTower", data => towers[data.type][data.id].healthBar.decrease(data.damage));
+
     socket.on("connect_error", () => { // offline
         socket.close(); // stop trying to connect
         $(".connect-error").style.display = "flex";
@@ -1373,6 +1516,9 @@ function update() {
         for(const id in towers[type])
             towers[type][id].update();
     }
+
+    for(const type in bases)
+        bases[type].update();
 }
 
 let lastTime = 0;
@@ -1432,8 +1578,9 @@ function render(time) {
 function setupEvents()
 {
     addEventListener("keydown", e => {
-        if(e.key === "a") buttons.attack.handler();
-        if(e.key === "s") buttons.spawn.handler();
+        if(e.key === "a") buttons["Attack"].handler();
+        if(e.key === "s") buttons["Spawn"].handler();
+        if(e.key === "t") buttons["Tower $200"].handler();
         keys[e.key] = true;
         if(e.key === "Enter" && $(".chat").style.display === "flex") {
             const input = $(".chat .text");

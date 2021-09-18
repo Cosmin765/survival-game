@@ -8,39 +8,11 @@ class Terrain
         this.healthData = {};
     }
 
-    getFromServer() {
-        socket.emit("getTerrain");
-        socket.on("terrain", terrain => {
-            this.map = terrain.map;
-            this.decorations = terrain.decorations;
-            this.layers = terrain;
-            this.upperLayer = this.calculateUpperLayer();
-
-            { // bases
-                const [ i, j ] = [ this.map.length, this.map[0].length ];
-                const basePositions = [
-                    [ j / 2, 1 ],
-                    [ 1, i - 2 ],
-                    [ j - 2, i - 2 ]
-                ];
-                const types = [ "red", "yellow", "blue" ];
-    
-                for(let i = 0; i < types.length; ++i) {
-                    const type = types[i];
-                    bases[type] = new Base(new Vec2(...basePositions[i]).mult(TILE_WIDTH), type);
-                }
-            }
-            
-            player.pos = bases[player.team].pos.copy().add(new Vec2(TILE_WIDTH * 1.2, 0));
-        });
-
-        socket.on("fire", targetData => {
-            for(const data of targetData) {
-                if(!(data.towerID in towers[data.towerType] && data.targetID in entities)) continue;
-                const tower = towers[data.towerType][data.towerID];
-                tower.fireBalls.push(new Fireball(tower.pos, entities[data.targetID], tower.color));
-            }
-        });
+    parseTerrain(terrain) {
+        this.map = terrain.map;
+        this.decorations = terrain.decorations;
+        this.layers = terrain;
+        this.upperLayer = this.calculateUpperLayer();
     }
 
     relativeCollider(layer, i, j) {

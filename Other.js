@@ -18,16 +18,16 @@ class Other extends SpriteAnim
         this.sword.update();
     }
 
+    getCollider(offX = 0, offY = 0) {
+        return [this.pos.x + offX + this.dims.x / 4 - this.dims.x / 2, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2, this.dims.x / 2, this.dims.y / 3];
+    }
+
     getFullCollider() {
         return [this.pos.x + adapt(10) + this.dims.x / 4 - this.dims.x / 2, this.pos.y, this.dims.x / 2 - adapt(20), this.dims.y / 2];
     }
 
     getColliderOrigin(offX = 0, offY = 0) {
         return [ this.pos.x + offX, this.pos.y + offY + this.dims.y / 1.5 - this.dims.y / 2 + this.dims.y / 6 ];
-    }
-
-    getFullCollider() {
-        return [this.pos.x + adapt(10) + this.dims.x / 4 - this.dims.x / 2, this.pos.y, this.dims.x / 2 - adapt(20), this.dims.y / 2];
     }
 
     getSwordCollider() {

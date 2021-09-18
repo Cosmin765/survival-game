@@ -251,18 +251,18 @@ async function main() {
                 const type = player.team;
                 const tower = new Tower(pos, type);
 
-                if(obstacle(tower.getCollider())) return;
+                const towerCollider = tower.getCollider();
+                if(obstacle(towerCollider)) return;
+                
+                for(const id in entities)
+                    if(collided(...entities[id].getCollider(), ...towerCollider))
+                        return;
 
                 player.money -= cost;
 
                 const id = uuidv4();
                 towers[type][id] = tower;
-                socket.emit("tower", {
-                    pos: [...tower.pos.modify(unadapt)],
-                    type: type,
-                    id: id,
-                    ownerID: socket.id
-                });
+                socket.emit("towerSpawn", { pos: [...tower.pos.modify(unadapt)], type: type, id: id, ownerID: socket.id });
             }
         };
         buttons[options.text] = new ActionButton(options);
@@ -291,7 +291,6 @@ function connect() {
     socket.on("connect", () => {
         if(started) return;
         entities[socket.id] = player;
-        terrain.getFromServer();
         init();
     });
     
@@ -316,26 +315,44 @@ function connect() {
         }
     });
 
-    const spawnTower = (pos, type, id) => towers[type][id] = new Tower(new Vec2(...pos).modify(adapt), type);
+    const spawnTower = (pos, type, id) => towers[type][id] = new Tower(new Vec2(...pos).modify(adapt), type, id);
 
     socket.on("initial", data => {
         player.team = data.team;
+        terrain.parseTerrain(data.terrain);
         
         for(const type in data.towersData)
-            for(const id in data.towersData[type])
+            for(const id in data.towersData[type]) {
                 spawnTower(data.towersData[type][id].pos, type, id);
+                towers[type][id].healthBar.curr = data.towersData[type][id].health;
+            }
+        
+        for(const type in data.basesData) {
+            const pos = new Vec2(...data.basesData[type].pos).modify(adapt);
+            bases[type] = new Base(pos, type);
+            const health = data.basesData[type].health;
+            bases[type].healthBar.curr = health > 0 ? health : 0;
+        }
+        player.pos = bases[player.team].pos.copy().add(new Vec2(TILE_WIDTH * 1.2, 0));
     });
 
     socket.on("towerSpawn", data => spawnTower(data.pos, data.type, data.id));
-    
     socket.on("removeDecoration", data => terrain.removeDecoration(data.i, data.j));
-
     socket.on("spawnDecoration", data => {
         for(const item of data) {
             terrain.decorations[item.i][item.j] = item.id;
             terrain.genUpper(terrain.upperLayer, item.i, item.j);
         }
     });
+    socket.on("fire", targetData => {
+        for(const data of targetData) {
+            const tower = towers[data.towerType][data.towerID];
+            tower.fireBalls.push(new Fireball(tower.pos, data.targetPos, tower.color));
+        }
+    });
+    socket.on("hurtTower", data => towers[data.type][data.id].healthBar.decrease(data.damage));
+    socket.on("hurtBase", data => bases[data.type].healthBar.decrease(data.damage));
+    socket.on("removeTower", data => delete towers[data.type][data.id]);
 
     socket.on("connect_error", () => { // offline
         socket.close(); // stop trying to connect
@@ -376,6 +393,9 @@ function update() {
         for(const id in towers[type])
             towers[type][id].update();
     }
+
+    for(const type in bases)
+        bases[type].update();
 }
 
 let lastTime = 0;

@@ -1,4 +1,4 @@
-class PlayerManager
+class PlayersManager
 {
     constructor() {
         this.teamsData = {
@@ -8,6 +8,11 @@ class PlayerManager
         };
         this.teams = [ "red", "yellow", "blue" ];
         this.count = 0;
+        this.playersData = {}; // the keys are the ids of the sockets
+    }
+
+    update(io) {
+        io.emit("players", this.playersData);
     }
 
     add(id) {
@@ -36,4 +41,4 @@ class PlayerManager
     }
 }
 
-module.exports = PlayerManager;
+module.exports = PlayersManager;

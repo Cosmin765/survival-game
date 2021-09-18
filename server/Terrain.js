@@ -49,8 +49,10 @@ class Terrain
         ];
         
         for(const [ generator, count ] of generators) {
-            for(let k = 0; k < count; ++k)
-            generator(decorations);
+            for(let k = 0; k < count; ++k) {
+                generator(decorations);
+                Terrain.ITEMS_COUNT++;
+            }
         }
         
         return decorations;
@@ -77,10 +79,10 @@ class Terrain
     static genStone(container) {
         const name = [ "stone_1", "stone_2" ][random(0, 2) | 0];
         const [ i, j ] = Terrain.getRandCoord(container.length, container[0].length);
-        if(Terrain.reserved(container, i, j)) return;
+        if(Terrain.reserved(container, i, j)) return null;
         
         if(container[i][j] !== null)
-            return;
+            return null;
         
         container[i][j] = keyToId[name];
 

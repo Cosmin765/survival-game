@@ -1,12 +1,14 @@
 class Tower
 {
-    constructor(pos, color) {
+    constructor(pos, color, id) {
         this.pos = pos.copy();
         this.color = color;
         this.type = color + "_tower";
+        this.id = id;
         this.dims = new Vec2(1.3, 2.6).mult(TILE_WIDTH);
         this.fireBalls = [];
         this.healthBar = new HealthBar(40, 1);
+        this.damage = 4;
     }
 
     update() {
@@ -16,19 +18,32 @@ class Tower
                 this.fireBalls.splice(i, 1);
                 i--; continue;
             }
+            const fireballCollider = this.fireBalls[i].getCollider();
             for(const id in entities) {
                 const entity = entities[id];
                 if(entity.team === this.color) continue;
-                if(collided(...entity.getFullCollider(), ...this.fireBalls[i].getCollider())) {
-                    entity.healthBar.decrease(4);
+                if(collided(...entity.getFullCollider(), ...fireballCollider)) {
+                    entity.healthBar.decrease(this.damage);
                     this.fireBalls.splice(i, 1);
                     i--; break;
+                }
+            }
+            
+            for(const type in bases) {
+                const base = bases[type];
+                if(base.color === this.color) continue;
+                if(collided(...base.getCollider(), ...fireballCollider)) {
+                    base.healthBar.decrease(this.damage);
+                    socket.emit("justHurtBase", { type, damage: this.damage });
+                    this.fireBalls.splice(i, 1);
+                    i--; break;        
                 }
             }
         }
 
         if(player.team !== this.color && player.hurt(this.getCollider())) {
             const damage = player.sword.getDamage();
+            socket.emit("hurtTower", { type: this.color, id: this.id, damage: damage });
             this.healthBar.decrease(damage);
         }
     }

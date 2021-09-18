@@ -143,7 +143,7 @@ class Player extends SpriteAnim
     }
 
     hurt(collider) {
-        return (this.sword.attacking && collided(...this.getSwordCollider(), ...collider));
+        return (this.sword.attacking && collided(...this.getSwordCollider(), ...collider) && !this.sword.hit);
     }
 
     render() {
