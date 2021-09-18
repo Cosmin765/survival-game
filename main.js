@@ -22,6 +22,8 @@ Array.prototype.equals = function(array) {
     return true;
 } // completely stolen code, hehe
 
+// plm
+
 let canvas, ctx;
 const $ = name => document.querySelector(name);
 
