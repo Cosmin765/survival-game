@@ -266,7 +266,7 @@ async function main() {
 
 function connect() {
     $(".loader").style.display = "block";
-    socket = io.connect(LOCAL ? "http://192.168.1.6:5000" : "http://109.98.216.123:5000");
+    socket = io.connect(LOCAL ? "localhost:5000" : "http://109.98.216.123:5000");
     
     socket.on("connect", () => {
         if(started) return;
