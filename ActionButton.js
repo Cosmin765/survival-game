@@ -26,13 +26,13 @@ class ActionButton extends Interactive
         this.pressed = true;
     }
 
-    release()
+    release(cancel = false)
     {
         if(this.pressed) {
             this.pressed = false;
 
             // click handler
-            this.handler();
+            if(!cancel) this.handler();
         }
     }
 
