@@ -1,10 +1,10 @@
 const Terrain = require("./Terrain");
+const NPC = require("./NPC");
 const { v4: uuid } = require("uuid");
 const TILE_WIDTH = 80;
 const getDist = (x1, y1, x2, y2) => Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
 
-class PlayersManager
-{
+class PlayersManager {
     constructor(io) {
         this.io = io; // reference to the io
         this.rooms = [];
@@ -12,10 +12,10 @@ class PlayersManager
         this.maxPlayers = 9;
     }
 
-    createRoom(name) {
+    createRoom() {
         const mapSize = [ Terrain.DEFAULT_I, Terrain.DEFAULT_J ];
         const room = {
-            name,
+            name: uuid(),
             teamsData: {
                 red: [],
                 yellow: [],
@@ -44,15 +44,21 @@ class PlayersManager
             terrain: {
                 map: Terrain.generateMap(...mapSize),
                 decorations: Terrain.generateDecorations(...mapSize)
-            }
+            },
+            npcs: []
         };
+        // TODO: finish implementing the npc class
+        {
+            const pos = room.basesData.blue.pos;
+            const actualPos = [ pos.x + TILE_WIDTH * 1.2, pos.y ];
+            room.npcs.push(new NPC(actualPos, "blue"));
+        } // add a temp npc
         this.rooms.push(room);
     }
 
     update() {
-        for(const room of this.rooms) {
+        for(const room of this.rooms)
             this.io.to(room.name).emit("players", room.playersData);
-        }
     }
 
     fire() {
@@ -122,7 +128,7 @@ class PlayersManager
     
     add(socket) {
         if(Object.keys(this.rooms[this.rooms.length - 1].playersData).length >= this.maxPlayers) {
-            this.createRoom(uuid());
+            this.createRoom();
         }
         
         const room = this.rooms[this.rooms.length - 1];
@@ -141,8 +147,9 @@ class PlayersManager
             team: team
         };
         
+        this.io.to(room.name).emit("players", room.playersData);
         socket.emit("initial", { team, towersData: room.towersData, basesData: room.basesData, terrain: room.terrain });
-        
+
         socket.on("towerSpawn", data => {
             room.towersData[data.type][data.id] = { pos: data.pos, ownerID: data.ownerID, health: 40 };
             socket.broadcast.to(room.name).emit("towerSpawn", data);
@@ -162,6 +169,7 @@ class PlayersManager
         });
         
         socket.on("hurtTower", data => {
+            if(!room.towersData[data.type][data.id]) return;
             room.towersData[data.type][data.id].health -= data.damage;
             if(room.towersData[data.type][data.id].health <= 0) {
                 this.io.to(room.name).emit("removeTower", { type: data.type, id: data.id });
@@ -171,9 +179,11 @@ class PlayersManager
         });
         
         const hurtBase = (type, damage) => {
+            if(!room.basesData[type]) return;
             room.basesData[type].health -= damage;
             if(room.basesData[type].health <= 0) {
-                console.log(type, "base destroyed!");
+                delete room.basesData[type];
+                this.io.to(room.name).emit("removeBase", type);
             }
         };
         
@@ -181,8 +191,6 @@ class PlayersManager
             hurtBase(data.type, data.damage);
             socket.broadcast.to(room.name).emit("hurtBase", data);
         });
-        
-        socket.on("justHurtBase", data => hurtBase(data.type, data.damage)); // hurt without propagating
         
         socket.on("store", data => {
             for(const property in data) {
@@ -210,7 +218,7 @@ class PlayersManager
     getTeam(room) {
         const lenToTeam = {};
         const lengths = [];
-        for(const team in room.teamsData) {
+        for(const team in room.basesData) {
             lenToTeam[room.teamsData[team].length] = team;
             lengths.push(room.teamsData[team].length);
         }
@@ -220,7 +228,6 @@ class PlayersManager
     }
 
     remove(socket, room) {
-        // const room = this.rooms[socket.roomIndex];
         const team = room.playersData[socket.id].team;
         const index = room.teamsData[team].indexOf(socket.id);
         room.teamsData[team].splice(index, 1);

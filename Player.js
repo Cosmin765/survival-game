@@ -1,5 +1,4 @@
-class Player extends SpriteAnim
-{
+class Player extends SpriteAnim {
     constructor(pos) {
         super(new Vec2(TILE_WIDTH, TILE_WIDTH).modify(unadapt).mult(24 / 16), 4);
         this.pos = pos.copy();
@@ -9,6 +8,7 @@ class Player extends SpriteAnim
         this.healthBar = new HealthBar(50, 1);
         this.money = 1000;
         this.sword = new Sword();
+        this.frozen = false;
 
         this.textBox = new TextBox(["Hello, world!"]);
         this.textBox.onSetTexts = texts => {
@@ -19,7 +19,7 @@ class Player extends SpriteAnim
         setInterval(() => {
             if(!socket) return;
             socket.emit("store", {
-                pos: [this.pos.x, this.pos.y].map(unadapt), // sending a normalized version
+                pos: this.healthBar.dead ? [-1000, -1000] : [this.pos.x, this.pos.y].map(unadapt), // sending a normalized version
                 leftFacing: this.leftFacing,
                 spriteOff: this.spriteOff,
                 health: this.healthBar.curr,
@@ -29,6 +29,7 @@ class Player extends SpriteAnim
     }
 
     update() {
+        if(this.frozen) return;
         this.updateAnim();
         this.textBox.update();
         this.sword.update();
@@ -38,6 +39,35 @@ class Player extends SpriteAnim
                 const damage = others[id].sword.getDamage();
                 this.healthBar.decrease(damage);
             }
+        }
+
+        if(this.healthBar.dead) {
+            this.frozen = true;
+            $(".respawn-container").style.display = "flex";
+            (async () => {
+                const ableToRespawn = await new Promise(async resolve => {
+                    for(let i = 5; i >= 0; --i) {
+                        $(".respawn-container .amount").innerHTML = i;
+                        await wait(1000);
+                        if(!bases[this.team]) {
+                            resolve(false);
+                            break; // the loop would have continued even after the resolve
+                        }
+                    }
+                    resolve(true);
+                });
+                
+                if(ableToRespawn) {
+                    this.healthBar.set(50);
+                    this.resetPos();
+                    this.frozen = false;
+                    $(".respawn-container").style.display = "none";
+                } else {
+                    $(".respawn-container").style.display = "none";
+                    $(".no-respawn").style.display = "flex";
+                    // wait(1000).then(() => $(".no-respawn").style.display = "none");
+                }
+            })();
         }
 
         const movement = new Vec2();
@@ -113,6 +143,10 @@ class Player extends SpriteAnim
                 }
             }
         }
+    }
+
+    resetPos() {
+        this.pos = bases[this.team].pos.copy().add(new Vec2(TILE_WIDTH * 1.2, 0));
     }
 
     getSurroundingPositions() {

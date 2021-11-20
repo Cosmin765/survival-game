@@ -1,10 +1,11 @@
 class Tower
 {
-    constructor(pos, color, id) {
+    constructor(pos, color, id, ownerID) {
         this.pos = pos.copy();
         this.color = color;
         this.type = color + "_tower";
         this.id = id;
+        this.ownerID = ownerID;
         this.dims = new Vec2(1.3, 2.6).mult(TILE_WIDTH);
         this.fireBalls = [];
         this.healthBar = new HealthBar(40, 1);
@@ -29,12 +30,15 @@ class Tower
                 }
             }
             
+            
             for(const type in bases) {
                 const base = bases[type];
                 if(base.color === this.color) continue;
                 if(collided(...base.getCollider(), ...fireballCollider)) {
-                    base.healthBar.decrease(this.damage);
-                    socket.emit("justHurtBase", { type, damage: this.damage });
+                    if(this.ownerID === socket.id) {
+                        base.healthBar.decrease(this.damage);
+                        socket.emit("hurtBase", { type, damage: this.damage });
+                    }
                     this.fireBalls.splice(i, 1);
                     i--; break;        
                 }

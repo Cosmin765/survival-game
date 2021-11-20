@@ -79,11 +79,13 @@ body {
 }
 
 .loader {
+    width: 0px;
+    height: 0px;
     border: 16px solid #f3f3f3;
     margin: 20px;
     border-radius: 50%;
     border-top: 16px solid #3498db;
-    -webkit-animation: spin 2s linear infinite; /* Safari */
+    -webkit-animation: spin 2s linear infinite;
     animation: spin 2s linear infinite;
     display: none;
 }
@@ -122,6 +124,36 @@ input.button {
 
 input.button:hover {
     background-color: rgb(78, 78, 255);
+}
+
+.alert-box {
+    position: absolute;
+    height: 100px;
+    top: calc(50vh - 50px);
+    background-color: rgba(255, 0, 0, 0.8);
+    color: white;
+    font-size: 28px;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.respawn-container {
+    display: none;
+}
+
+.no-respawn {
+    display: none;
+}
+
+.respawn-container .amount::before, ::after {
+    content: "\00a0";
+}
+.respawn-container .amount {
+    color: #3498db;
+    font-size: 35px;
 }
 
 /* Safari */

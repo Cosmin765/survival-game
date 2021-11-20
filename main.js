@@ -2,6 +2,7 @@ window.onload = main;
 const MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
 const LOCAL = true;
 const FRAMERATE = 60; // not really framerate, more like "update rate", so that the gameplay doesn't feel slow for weaker devices
+const SERVER_ADDRESS = LOCAL ? "localhost:5000" : "http://109.98.216.123:5000";
 
 Array.prototype.equals = function(array) {
     if (!array)
@@ -29,6 +30,7 @@ const others = {}, entities = {}, panels = [], bases = {}, textures = {}, towers
 const [ width, height ] = [ 450, 800 ];
 
 const $ = name => document.querySelector(name);
+const $$ = name => document.querySelectorAll(name);
 const adapt = val => val * width / 450;
 const unadapt = val => val * 450 / width;
 const wait = amount => new Promise(resolve => setTimeout(resolve, amount));
@@ -121,6 +123,11 @@ async function main() {
 
     await preload();
     $("body").style.display = "initial";
+    
+    $$(".alert-box").forEach(el => {
+        el.style.width = `${width / ratio - adapt(80)}px`;
+        el.style.left = `${adapt(40)}px`;
+    });
 
     {
         const options = {
@@ -195,6 +202,8 @@ async function main() {
                 player.money -= cost;
 
                 const id = uuidv4();
+                tower.id = id;
+                tower.ownerID = socket.id;
                 towers[type][id] = tower;
                 socket.emit("towerSpawn", { pos: [...tower.pos.modify(unadapt)], type: type, id: id, ownerID: socket.id });
             }
@@ -222,7 +231,7 @@ async function main() {
 
 function connect() {
     $(".loader").style.display = "block";
-    socket = io.connect(LOCAL ? "http://192.168.1.6:5000" : "http://109.98.216.123:5000");
+    socket = io.connect(SERVER_ADDRESS);
 
     socket.on("connect", () => {
         if(started) return;
@@ -245,7 +254,7 @@ function connect() {
             if(data[id].attacking) others[id].sword.attack();
         }
     });
-    const spawnTower = (pos, type, id) => towers[type][id] = new Tower(new Vec2(...pos).modify(adapt), type, id);
+    const spawnTower = (pos, type, id, ownerID) => towers[type][id] = new Tower(new Vec2(...pos).modify(adapt), type, id, ownerID);
 
     socket.on("initial", data => {
         socket.emit("texts", { texts: ["Hello, world!"], id: socket.id });
@@ -265,9 +274,9 @@ function connect() {
             const health = data.basesData[type].health;
             bases[type].healthBar.curr = health > 0 ? health : 0;
         }
-        player.pos = bases[player.team].pos.copy().add(new Vec2(TILE_WIDTH * 1.2, 0));
+        player.resetPos();
     });
-    socket.on("towerSpawn", data => spawnTower(data.pos, data.type, data.id));
+    socket.on("towerSpawn", data => spawnTower(data.pos, data.type, data.id, data.ownerID));
     socket.on("removeDecoration", data => terrain.removeDecoration(data.i, data.j));
     socket.on("spawnDecoration", data => {
         for(const item of data) {
@@ -281,9 +290,16 @@ function connect() {
             tower.fireBalls.push(new Fireball(tower.pos, data.targetPos, tower.color));
         }
     });
-    socket.on("hurtTower", data => towers[data.type][data.id].healthBar.decrease(data.damage));
-    socket.on("hurtBase", data => bases[data.type].healthBar.decrease(data.damage));
+    socket.on("hurtTower", data => {
+        if(!towers[data.type][data.id]) return;
+        towers[data.type][data.id].healthBar.decrease(data.damage);
+    });
+    socket.on("hurtBase", data => {
+        if(!bases[data.type]) return;
+        bases[data.type].healthBar.decrease(data.damage);
+    });
     socket.on("removeTower", data => delete towers[data.type][data.id]);
+    socket.on("removeBase", type => delete bases[type]);
     socket.on("texts", data => others[data.id].textBox.setTexts(data.texts));
     socket.on("connect_error", () => { // offline
         socket.close(); // stop trying to connect
@@ -324,9 +340,8 @@ function update() {
         bases[type].update();
 }
 
-let lastTime = 0;
-let timeSinceLast = 0;
-let desiredTime = 1000 / FRAMERATE;
+let lastTime = 0, timeSinceLast = 0;
+const desiredTime = 1000 / FRAMERATE;
 function render(time) {
     // credit to analogstudios for the assets
 
@@ -384,6 +399,7 @@ function setupEvents() {
             case "s":       if(!chatVisible) buttons["Spawn"].handler();        break;
             case "t":       if(!chatVisible) buttons["Tower $200"].handler();   break;
             case "c":       if(!chatVisible) buttons["Chat"].handler();         break;
+            case "f":       player.healthBar.decrease(100);                     break; // temp
             case "Enter":   if(chatVisible) sendMessage();                      break; // works for phone too
         }
     });
