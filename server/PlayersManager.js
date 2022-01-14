@@ -1,5 +1,6 @@
 const Terrain = require("./Terrain");
 const NPC = require("./NPC");
+const Vec2 = require("../Vec2");
 const { v4: uuid } = require("uuid");
 const TILE_WIDTH = 80;
 const getDist = (x1, y1, x2, y2) => Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
@@ -9,7 +10,6 @@ class PlayersManager {
         this.io = io; // reference to the io
         this.rooms = [];
         this.createRoom(uuid());
-        this.maxPlayers = 9;
     }
 
     createRoom() {
@@ -45,25 +45,59 @@ class PlayersManager {
                 map: Terrain.generateMap(...mapSize),
                 decorations: Terrain.generateDecorations(...mapSize)
             },
-            npcs: []
+            npcs: [],
+            maxPlayers: 6,
+            requiredPlayers: 3,
+            currentPlayers: 0,
+            started: false
         };
-        // TODO: finish implementing the npc class
-        {
-            const pos = room.basesData.blue.pos;
-            const actualPos = [ pos.x + TILE_WIDTH * 1.2, pos.y ];
-            room.npcs.push(new NPC(actualPos, "blue"));
-        } // add a temp npc
+
+        for(let i = 0; i < 1; ++i) {
+            this.addNPC(room);
+        }
         this.rooms.push(room);
+        return room;
     }
 
     update() {
-        for(const room of this.rooms)
-            this.io.to(room.name).emit("players", room.playersData);
+        for(const room of this.rooms) {
+            if(room.started)
+                this.updateRoom(room);
+        }
+    }
+
+    updateRoom(room) {
+        for(const npc of room.npcs)
+            npc.update();
+
+        this.storeNPCData(room);
+        this.io.to(room.name).emit("players", room.playersData);
+    }
+    
+    addNPC(room) {
+        // add a temp npc
+        const team = this.getTeam(room);
+        const pos = [...new Vec2(...room.basesData[team].pos).add(new Vec2(TILE_WIDTH * 1.2, 0))];
+
+        const id = uuid();
+        const npc = new NPC(pos, team, id, room);
+        room.npcs.push(npc);
+        room.playersData[id] = npc.getData();
+        room.teamsData[team].push(id);
+        room.currentPlayers += 1;
+    }
+
+    storeNPCData(room) {
+        for(const npc of room.npcs)
+            room.playersData[npc.id] = npc.getData();
     }
 
     fire() {
         const treshold = 400; // no need for adapt on the server side
         for(const room of this.rooms) {
+            if(!room.started)
+                continue;
+
             const targetData = [];
     
             for(const type in room.towersData) {
@@ -103,6 +137,9 @@ class PlayersManager {
 
     generate() {
         for(const room of this.rooms) {
+            if(!room.started)
+                continue;
+                
             const decorations = room.terrain.decorations;
             const MAX_COUNT = decorations.length * decorations[0].length / 5;
             if(Terrain.ITEMS_COUNT > MAX_COUNT) return;
@@ -127,28 +164,48 @@ class PlayersManager {
     }
     
     add(socket) {
-        if(Object.keys(this.rooms[this.rooms.length - 1].playersData).length >= this.maxPlayers) {
-            this.createRoom();
+        let room = this.rooms[0];
+        for(let i = 1; i < this.rooms.length; ++i) {
+            const otherRoom = this.rooms[i];
+            if(!otherRoom.started && otherRoom.maxPlayers - otherRoom.currentPlayers > 0 && otherRoom.currentPlayers < room.currentPlayers) {
+                room = this.rooms[i];
+            }
+        }
+
+        if(room.currentPlayers >= room.maxPlayers || room.started) {
+            room = this.createRoom();
         }
         
-        const room = this.rooms[this.rooms.length - 1];
         socket.join(room.name);
         const team = this.getTeam(room);
         
         room.teamsData[team].push(socket.id);
         room.playersData[socket.id] = {
+            name: "",
             pos: [ -1000, -1000 ],
             leftFacing: false,
             spriteOff: 0,
-            texts: [],
-            name: "",
             health: 50,
+            team: team,
             attacking: false,
-            team: team
+            texts: [],
         };
+
+        room.currentPlayers += 1;
+
+        if(room.currentPlayers >= room.requiredPlayers) {
+            room.started = true;
+        }
         
         this.io.to(room.name).emit("players", room.playersData);
-        socket.emit("initial", { team, towersData: room.towersData, basesData: room.basesData, terrain: room.terrain });
+        socket.emit("initial", { 
+            team, 
+            towersData: room.towersData, 
+            basesData: room.basesData, 
+            terrain: room.terrain
+        });
+
+        this.io.to(room.name).emit("updateWaitingInfo", { currentPlayers: room.currentPlayers, requiredPlayers: room.requiredPlayers });
 
         socket.on("towerSpawn", data => {
             room.towersData[data.type][data.id] = { pos: data.pos, ownerID: data.ownerID, health: 40 };
@@ -212,12 +269,13 @@ class PlayersManager {
             }
             delete room.playersData[socket.id]; // apparently this exists, nice
             this.io.to(room.name).emit("remove", { id: socket.id, towersRemoveData });
+            this.io.to(room.name).emit("updateWaitingInfo", { currentPlayers: room.currentPlayers, requiredPlayers: room.requiredPlayers });
         });
     }
 
     getTeam(room) {
         const lenToTeam = {};
-        const lengths = [];
+        const lengths = []; // generate a team for the new player
         for(const team in room.basesData) {
             lenToTeam[room.teamsData[team].length] = team;
             lengths.push(room.teamsData[team].length);
@@ -231,6 +289,7 @@ class PlayersManager {
         const team = room.playersData[socket.id].team;
         const index = room.teamsData[team].indexOf(socket.id);
         room.teamsData[team].splice(index, 1);
+        room.currentPlayers -= 1;
     }
 }
 

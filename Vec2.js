@@ -96,3 +96,7 @@ class Vec2
         yield this.x; yield this.y;
     }
 };
+
+try { // for server it will work, but for frontend, it won't
+    module.exports = Vec2;
+} catch(e) {}

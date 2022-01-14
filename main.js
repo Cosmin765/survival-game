@@ -2,7 +2,7 @@ window.onload = main;
 const MOBILE = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
 const LOCAL = true;
 const FRAMERATE = 60; // not really framerate, more like "update rate", so that the gameplay doesn't feel slow for weaker devices
-const SERVER_ADDRESS = LOCAL ? "localhost:5000" : "http://109.98.216.123:5000";
+const SERVER_ADDRESS = LOCAL ? "192.168.1.3:5000" : "http://109.98.216.123:5000";
 
 Array.prototype.equals = function(array) {
     if (!array)
@@ -23,7 +23,7 @@ Array.prototype.equals = function(array) {
     return true;
 } // completely stolen code, hehe
 
-let canvas, ctx, socket = null, spriteData, idToKey = [], keyToId = {}, colliders = {}, joystick, ratio, player, terrain, started = false;
+let canvas, ctx, socket = null, spriteData, idToKey = [], keyToId = {}, colliders = {}, joystick, ratio, player, terrain, connected = false, started = false;
 const others = {}, entities = {}, panels = [], bases = {}, textures = {}, towers = { red: {}, yellow: {}, blue: {} }, buttonDisplay = {}, buttons = {}, keys = {};
 
 // const [ width, height ] = [ 900, 1600 ];
@@ -234,7 +234,7 @@ function connect() {
     socket = io.connect(SERVER_ADDRESS);
 
     socket.on("connect", () => {
-        if(started) return;
+        if(connected) return;
         entities[socket.id] = player;
         init();
     });
@@ -276,6 +276,13 @@ function connect() {
         }
         player.resetPos();
     });
+    socket.on("updateWaitingInfo", ({ currentPlayers, requiredPlayers }) => {
+        $(".waiting-info").innerText = `${currentPlayers}/${requiredPlayers}`;
+        if(currentPlayers >= requiredPlayers) {
+            $(".waiting-box").style.display = "none";
+            started = true;
+        }
+    });
     socket.on("towerSpawn", data => spawnTower(data.pos, data.type, data.id, data.ownerID));
     socket.on("removeDecoration", data => terrain.removeDecoration(data.i, data.j));
     socket.on("spawnDecoration", data => {
@@ -315,9 +322,10 @@ function connect() {
 }
 
 function init() {
-    started = true;
+    connected = true;
     $(".main-menu").style.display = "none";
     canvas.style.display = "block";
+    $(".waiting-box").style.display = "block";
     $(".loader").style.display = "none";
     $(".chat").style.width = `${(width - adapt(40)) / ratio}px`;
     $(".name").style.display = "none";
@@ -328,6 +336,7 @@ function init() {
 
 function update() {
     player.update();
+    
     for(const id in others)
         others[id].update();
 
@@ -392,6 +401,7 @@ function render(time) {
 
 function setupEvents() {
     addEventListener("keydown", e => {
+        if(!started) return;
         keys[e.key] = true;
         const chatVisible = $(".chat").style.display === "flex";
         switch(e.key) {
@@ -399,7 +409,6 @@ function setupEvents() {
             case "s":       if(!chatVisible) buttons["Spawn"].handler();        break;
             case "t":       if(!chatVisible) buttons["Tower $200"].handler();   break;
             case "c":       if(!chatVisible) buttons["Chat"].handler();         break;
-            case "f":       player.healthBar.decrease(100);                     break; // temp
             case "Enter":   if(chatVisible) sendMessage();                      break; // works for phone too
         }
     });
@@ -415,7 +424,7 @@ function setupEvents() {
             }
 
             for(const type in buttons)
-                if(buttons[type].clicked(pos))
+                if(buttons[type].clicked(pos) && started)
                     buttons[type].press();
         }
     });
@@ -473,7 +482,7 @@ function setupEvents() {
         const pos = new Vec2(e.clientX, e.clientY).mult(ratio);
         if(joystick.clicked(pos)) joystick.setTouch(true, pos);
         for(const type in buttons)
-            if(buttons[type].clicked(pos))
+            if(buttons[type].clicked(pos) && started)
                 buttons[type].press();
     });
 

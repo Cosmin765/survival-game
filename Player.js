@@ -34,6 +34,9 @@ class Player extends SpriteAnim {
         this.textBox.update();
         this.sword.update();
 
+        if(!started)
+            return;
+
         for(const id in others) {
             if(others[id].hurt(this.getFullCollider())) {
                 const damage = others[id].sword.getDamage();
@@ -71,10 +74,10 @@ class Player extends SpriteAnim {
         }
 
         const movement = new Vec2();
-        if(keys["ArrowUp"]) movement.y -= 1;
-        if(keys["ArrowLeft"]) movement.x -= 1;
-        if(keys["ArrowDown"]) movement.y += 1;
-        if(keys["ArrowRight"]) movement.x += 1;
+        if(keys["ArrowUp"])     movement.y -= 1;
+        if(keys["ArrowLeft"])   movement.x -= 1;
+        if(keys["ArrowDown"])   movement.y += 1;
+        if(keys["ArrowRight"])  movement.x += 1;
 
         const vel = (movement.dist() ? movement : joystick.dir()).normalize().mult(adapt(4));
         const positions = this.getSurroundingPositions();
